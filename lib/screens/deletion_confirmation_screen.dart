@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../models/media_item.dart';
 import '../services/photo_service.dart';
+import '../services/stats_service.dart';
 import '../widgets/logo_widget.dart';
 
 class DeletionConfirmationScreen extends StatefulWidget {
@@ -73,17 +74,46 @@ class _DeletionConfirmationScreenState
           .where((item) => _selectedIds.contains(item.id))
           .toList();
 
+      // Get file sizes before deletion
+      final fileSizes = await PhotoService.getFileSizes(itemsToDelete);
+      
+      // Calculate stats
+      int photosDeleted = 0;
+      int videosDeleted = 0;
+      int photoStorageBytes = 0;
+      int videoStorageBytes = 0;
+      
+      for (final item in itemsToDelete) {
+        final size = fileSizes[item.id] ?? 0;
+        if (item.isVideo) {
+          videosDeleted++;
+          videoStorageBytes += size;
+        } else {
+          photosDeleted++;
+          photoStorageBytes += size;
+        }
+      }
+
       final success = await PhotoService.deleteMediaItems(itemsToDelete);
       setState(() => _isDeleting = false);
 
       if (context.mounted) {
         if (success) {
+          // Record stats
+          await StatsService.recordDeletions(
+            photosDeleted: photosDeleted,
+            videosDeleted: videosDeleted,
+            photoStorageBytes: photoStorageBytes,
+            videoStorageBytes: videoStorageBytes,
+          );
+          
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Successfully deleted ${itemsToDelete.length} item(s)'),
             ),
           );
-          Navigator.of(context).pushNamedAndRemoveUntil('/carousel', (route) => false);
+          // Navigate to home screen after deletion
+          Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Failed to delete items')),

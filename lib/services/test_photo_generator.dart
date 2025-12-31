@@ -9,6 +9,9 @@ import 'package:native_exif/native_exif.dart';
 import 'package:image/image.dart' as img;
 import 'dart:ui' as ui;
 
+// Platform channel for setting video creation dates
+const MethodChannel _videoDateChannel = MethodChannel('co.uk.vidbeamish.EzyPics/video_date');
+
 class TestPhotoGenerator {
   static Future<bool> generateTestPhotos({
     required String dateKey, // MM-DD format
@@ -55,9 +58,12 @@ class TestPhotoGenerator {
           final ukDate = '${day.toString().padLeft(2, '0')}/${month.toString().padLeft(2, '0')}/$year';
           
           // Decide if this should be a video (30% chance)
-          final isVideo = random.nextDouble() < 0.3;
+          final randomValue = random.nextDouble();
+          final isVideo = randomValue < 0.3;
+          print('Item $i: random=$randomValue, isVideo=$isVideo');
           
           if (isVideo) {
+            print('Generating video for year $year, item $i');
             // Copy the template video file and set creation date
             final videoFile = await _copyTemplateVideo(
               directory: tempDir,
@@ -66,29 +72,48 @@ class TestPhotoGenerator {
             );
             
             if (videoFile != null) {
+              print('Video file created: ${videoFile.path}, size: ${await videoFile.length()} bytes');
               try {
+                print('Attempting to save video to photo library...');
                 final asset = await PhotoManager.editor.saveVideo(
                   videoFile,
                   title: 'EzyPics Test Video $year-$i',
                 );
                 if (asset != null) {
+                  // Try to set the creation date using platform channel
+                  try {
+                    await _videoDateChannel.invokeMethod('setCreationDate', {
+                      'assetId': asset.id,
+                      'timestamp': targetDate.millisecondsSinceEpoch ~/ 1000, // Unix timestamp in seconds
+                    });
+                    print('Attempted to set video creation date to: $targetDate');
+                  } catch (e) {
+                    print('Warning: Could not set video creation date via platform channel: $e');
+                    print('Video will have current date as creation date');
+                  }
+                  
                   totalGenerated++;
                   videosGenerated++;
-                  print('Video saved: $year-$i');
+                  print('✓ Video saved successfully: $year-$i, asset ID: ${asset.id}');
                 } else {
                   videosFailed++;
-                  print('Video save failed: $year-$i (asset is null)');
+                  print('✗ Video save failed: $year-$i (asset is null)');
                 }
-              } catch (e) {
+              } catch (e, stackTrace) {
                 videosFailed++;
-                print('Error saving video: $e');
+                print('✗ Error saving video: $e');
+                print('Stack trace: $stackTrace');
               }
               
               try {
                 await videoFile.delete();
+                print('Cleaned up temp video file');
               } catch (e) {
-                // Ignore cleanup errors
+                print('Warning: Could not delete temp video file: $e');
               }
+            } else {
+              videosFailed++;
+              print('✗ Video file creation failed: $year-$i');
             }
           } else {
             // Create photo file
@@ -289,9 +314,15 @@ class TestPhotoGenerator {
       final videoFile = File('${directory.path}/$filename');
       await videoFile.writeAsBytes(videoBytes);
       
-      // Note: Video metadata (creation date) is more complex to modify
-      // For now, the video will have the current date when saved
-      // To set video creation dates, we'd need ffmpeg or similar tools
+      // Set file modification date to target date
+      // iOS Photos often uses file modification date as creation date for videos
+      try {
+        await videoFile.setLastModified(targetDate);
+        print('Set video file modification date to: $targetDate');
+      } catch (e) {
+        print('Warning: Could not set file modification date: $e');
+        // Continue anyway - some platforms may not support this
+      }
       
       return videoFile;
     } catch (e) {

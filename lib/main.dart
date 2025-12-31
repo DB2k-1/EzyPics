@@ -5,6 +5,7 @@ import 'screens/carousel_screen.dart';
 import 'screens/swipe_screen.dart';
 import 'screens/deletion_confirmation_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/home_screen.dart';
 import 'services/photo_service.dart';
 import 'models/media_item.dart';
 
@@ -33,12 +34,20 @@ class EzyPicsApp extends StatelessWidget {
       initialRoute: '/',
       routes: {
         '/': (context) => const InitialScreen(),
+        '/home': (context) => const HomeScreen(),
         '/carousel': (context) => const CarouselScreen(),
         '/swipe': (context) {
           final args = ModalRoute.of(context)!.settings.arguments as Map;
+          final media = args['media'] as List<MediaItem>;
+          final videos = media.where((m) => m.isVideo).toList();
+          final photos = media.where((m) => !m.isVideo).toList();
+          print('Main: SwipeScreen route - ${photos.length} photos, ${videos.length} videos');
+          for (final item in media) {
+            print('Main: Media item - isVideo: ${item.isVideo}, ID: ${item.id}');
+          }
           return SwipeScreen(
             dateKey: args['dateKey'] as String,
-            media: args['media'] as List<MediaItem>,
+            media: media,
           );
         },
         '/deletion-confirmation': (context) {
@@ -76,7 +85,7 @@ class _InitialScreenState extends State<InitialScreen> {
         _isChecking = false;
       });
       if (hasPermission) {
-        Navigator.of(context).pushReplacementNamed('/carousel');
+        Navigator.of(context).pushReplacementNamed('/home');
       }
     }
   }

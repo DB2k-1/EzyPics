@@ -1,5 +1,6 @@
 import UIKit
 import Flutter
+import Photos
 
 @available(iOS 13.0, *)
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
@@ -19,6 +20,39 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         
         // Create Flutter view controller with the engine
         let flutterViewController = FlutterViewController(engine: flutterEngine, nibName: nil, bundle: nil)
+        
+        // Set up method channel for setting video creation dates
+        let videoDateChannel = FlutterMethodChannel(
+            name: "co.uk.vidbeamish.EzyPics/video_date",
+            binaryMessenger: flutterViewController.binaryMessenger
+        )
+        
+        videoDateChannel.setMethodCallHandler { (call: FlutterMethodCall, result: @escaping FlutterResult) in
+            if call.method == "setCreationDate" {
+                guard let args = call.arguments as? [String: Any],
+                      let assetId = args["assetId"] as? String,
+                      let timestamp = args["timestamp"] as? Int64 else {
+                    result(FlutterError(code: "INVALID_ARGS", message: "Invalid arguments", details: nil))
+                    return
+                }
+                
+                let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
+                
+                PHPhotoLibrary.shared().performChanges({
+                    if let asset = PHAsset.fetchAssets(withLocalIdentifiers: [assetId], options: nil).firstObject {
+                        PHAssetChangeRequest(for: asset).creationDate = date
+                    }
+                }, completionHandler: { success, error in
+                    if success {
+                        result(true)
+                    } else {
+                        result(FlutterError(code: "SET_DATE_FAILED", message: error?.localizedDescription ?? "Unknown error", details: nil))
+                    }
+                })
+            } else {
+                result(FlutterMethodNotImplemented)
+            }
+        }
         
         window = UIWindow(windowScene: windowScene)
         window?.rootViewController = flutterViewController

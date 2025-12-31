@@ -229,6 +229,12 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     print('Navigating to swipe screen - preview complete');
     final media = _mediaMap[_selectedDateKey] ?? [];
     print('Media count for navigation: ${media.length}');
+    final videos = media.where((m) => m.isVideo).toList();
+    final photos = media.where((m) => !m.isVideo).toList();
+    print('CarouselScreen: Passing to SwipeScreen - ${photos.length} photos, ${videos.length} videos');
+    for (final item in media) {
+      print('CarouselScreen: Media item - isVideo: ${item.isVideo}, ID: ${item.id}');
+    }
     _galleryTimer?.cancel();
     _galleryTimer = null;
     

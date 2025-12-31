@@ -23,6 +23,17 @@ class _SwipeScreenState extends State<SwipeScreen> {
   final List<MediaItem> _mediaToDelete = [];
   double _dragOffset = 0.0;
 
+  @override
+  void initState() {
+    super.initState();
+    final videos = widget.media.where((m) => m.isVideo).toList();
+    final photos = widget.media.where((m) => !m.isVideo).toList();
+    print('SwipeScreen initState: Total media=${widget.media.length}, Videos=${videos.length}, Photos=${photos.length}');
+    for (final item in widget.media) {
+      print('SwipeScreen initState: Item - isVideo: ${item.isVideo}, ID: ${item.id}');
+    }
+  }
+
   void _handleSwipe(String direction) {
     final currentMedia = widget.media[_currentIndex];
 
@@ -38,11 +49,17 @@ class _SwipeScreenState extends State<SwipeScreen> {
         _dragOffset = 0.0;
       });
     } else {
-      // All cards swiped, navigate to deletion confirmation
-      Navigator.of(context).pushReplacementNamed(
-        '/deletion-confirmation',
-        arguments: _mediaToDelete,
-      );
+      // All cards swiped
+      if (_mediaToDelete.isEmpty) {
+        // No items to delete, go to home screen
+        Navigator.of(context).pushReplacementNamed('/home');
+      } else {
+        // Navigate to deletion confirmation
+        Navigator.of(context).pushReplacementNamed(
+          '/deletion-confirmation',
+          arguments: _mediaToDelete,
+        );
+      }
     }
   }
 
@@ -53,6 +70,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
     }
 
     final currentMedia = widget.media[_currentIndex];
+    print('SwipeScreen: Showing item ${_currentIndex + 1}/${widget.media.length}');
+    print('SwipeScreen: Media type - isVideo: ${currentMedia.isVideo}, ID: ${currentMedia.id}');
+    print('SwipeScreen: Total media breakdown - Photos: ${widget.media.where((m) => !m.isVideo).length}, Videos: ${widget.media.where((m) => m.isVideo).length}');
     final progress = ((_currentIndex + 1) / widget.media.length) * 100;
 
     return Scaffold(
@@ -103,7 +123,10 @@ class _SwipeScreenState extends State<SwipeScreen> {
                     child: SizedBox(
                       width: MediaQuery.of(context).size.width - 40,
                       height: MediaQuery.of(context).size.height * 0.6,
-                      child: SwipeCard(mediaItem: currentMedia),
+                      child: SwipeCard(
+                        key: ValueKey(currentMedia.id),
+                        mediaItem: currentMedia,
+                      ),
                     ),
                   ),
                 ),

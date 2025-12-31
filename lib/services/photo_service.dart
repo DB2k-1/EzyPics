@@ -46,23 +46,46 @@ class PhotoService {
         print('PhotoService: Got ${assets.length} assets in this batch');
 
         // Group by date
+        int videoCount = 0;
+        int photoCount = 0;
         for (final asset in assets) {
           if (asset.createDateTime != null) {
+            final isVideo = asset.type == AssetType.video;
+            if (isVideo) videoCount++;
+            else photoCount++;
+            
             final mediaItem = MediaItem(
               id: asset.id,
               path: asset.relativePath ?? '',
               creationTime: asset.createDateTime!,
-              isVideo: asset.type == AssetType.video,
+              isVideo: isVideo,
               width: asset.width,
               height: asset.height,
             );
 
             final dateKey = mediaItem.dateKey;
+            final dateStr = '${asset.createDateTime!.month.toString().padLeft(2, '0')}-${asset.createDateTime!.day.toString().padLeft(2, '0')}';
+            
+            // Debug logging for videos
+            if (isVideo) {
+              print('PhotoService: VIDEO detected - ID: ${asset.id}, Date: ${asset.createDateTime}, DateKey: $dateKey, DateStr: $dateStr');
+              print('PhotoService: Created MediaItem with isVideo=${mediaItem.isVideo}');
+            }
+            
+            // Verify MediaItem isVideo flag matches
+            if (isVideo != mediaItem.isVideo) {
+              print('PhotoService: ERROR - isVideo mismatch! asset.type=${asset.type}, isVideo=$isVideo, mediaItem.isVideo=${mediaItem.isVideo}');
+            }
+            
             mediaMap.putIfAbsent(dateKey, () => []);
             mediaMap[dateKey]!.add(mediaItem);
             totalProcessed++;
+          } else {
+            // Log assets without creation date
+            print('PhotoService: Asset ${asset.id} has no createDateTime, type: ${asset.type}');
           }
         }
+        print('PhotoService: Batch contains $photoCount photos, $videoCount videos');
       }
       print('PhotoService: Processed $totalProcessed assets total');
 
@@ -73,7 +96,15 @@ class PhotoService {
       
       print('PhotoService: Media grouped by dates: ${mediaMap.keys.toList()}');
       for (final key in mediaMap.keys) {
-        print('PhotoService: Date $key has ${mediaMap[key]!.length} items');
+        final items = mediaMap[key]!;
+        final videos = items.where((item) => item.isVideo).toList();
+        final photos = items.where((item) => !item.isVideo).toList();
+        print('PhotoService: Date $key has ${items.length} items (${photos.length} photos, ${videos.length} videos)');
+        
+        // Log details for each video
+        for (final video in videos) {
+          print('PhotoService:   VIDEO on $key - ID: ${video.id}, Date: ${video.creationTime}, Year: ${video.year}');
+        }
       }
     } catch (e) {
       print('Error scanning media: $e');
@@ -98,6 +129,33 @@ class PhotoService {
       print('Error deleting media: $e');
       return false;
     }
+  }
+
+  /// Get file size for a media item (in bytes)
+  static Future<int> getFileSize(MediaItem item) async {
+    try {
+      final asset = await AssetEntity.fromId(item.id);
+      if (asset == null) return 0;
+      
+      final file = await asset.file;
+      if (file == null) return 0;
+      
+      final size = await file.length();
+      return size;
+    } catch (e) {
+      print('Error getting file size: $e');
+      return 0;
+    }
+  }
+
+  /// Get file sizes for multiple media items
+  static Future<Map<String, int>> getFileSizes(List<MediaItem> items) async {
+    final sizes = <String, int>{};
+    for (final item in items) {
+      final size = await getFileSize(item);
+      sizes[item.id] = size;
+    }
+    return sizes;
   }
 }
 

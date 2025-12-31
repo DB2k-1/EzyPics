@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:video_player/video_player.dart';
 import '../models/media_item.dart';
+import '../services/video_settings_service.dart';
 
 class _FullscreenImageViewer extends StatefulWidget {
   final File imageFile;
@@ -89,11 +90,29 @@ class _FullscreenVideoPlayer extends StatefulWidget {
 
 class _FullscreenVideoPlayerState extends State<_FullscreenVideoPlayer> {
   bool _showControls = true;
+  bool _isMuted = false;
 
   @override
   void initState() {
     super.initState();
     widget.controller.play();
+    _loadMuteState();
+  }
+
+  Future<void> _loadMuteState() async {
+    final muted = await VideoSettingsService.isMuted();
+    widget.controller.setVolume(muted ? 0.0 : 1.0);
+    setState(() {
+      _isMuted = muted;
+    });
+  }
+
+  Future<void> _toggleMute() async {
+    final newMuted = await VideoSettingsService.toggleMute();
+    widget.controller.setVolume(newMuted ? 0.0 : 1.0);
+    setState(() {
+      _isMuted = newMuted;
+    });
   }
 
   void _togglePlayPause() {
@@ -172,12 +191,36 @@ class _FullscreenVideoPlayerState extends State<_FullscreenVideoPlayer> {
             Positioned(
               top: 10,
               right: 10,
-              child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.white, size: 30),
-                onPressed: () {
-                  widget.controller.pause();
-                  Navigator.of(context).pop();
-                },
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Mute/unmute button
+                  Material(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(24),
+                    child: InkWell(
+                      onTap: _toggleMute,
+                      borderRadius: BorderRadius.circular(24),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Icon(
+                          _isMuted ? Icons.volume_off : Icons.volume_up,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Close button
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white, size: 30),
+                    onPressed: () {
+                      widget.controller.pause();
+                      Navigator.of(context).pop();
+                    },
+                  ),
+                ],
               ),
             ),
           ],
@@ -200,18 +243,32 @@ class _SwipeCardState extends State<SwipeCard> {
   VideoPlayerController? _videoController;
   bool _isVideoInitializing = false;
   String? _videoError;
+  bool _isMuted = false;
 
   @override
   void initState() {
     super.initState();
+    print('SwipeCard initState: isVideo=${widget.mediaItem.isVideo}, ID=${widget.mediaItem.id}');
     if (widget.mediaItem.isVideo) {
+      print('SwipeCard: Initializing video player...');
       _initVideoPlayer();
+    } else {
+      print('SwipeCard: Not a video, skipping video initialization');
     }
   }
 
   Future<void> _initVideoPlayer() async {
-    if (_isVideoInitializing) return;
+    if (_isVideoInitializing) {
+      print('Video initialization already in progress, skipping');
+      return;
+    }
     
+    if (_videoController != null && _videoController!.value.isInitialized) {
+      print('Video controller already initialized, skipping');
+      return;
+    }
+    
+    print('_initVideoPlayer called for video: ${widget.mediaItem.id}');
     setState(() {
       _isVideoInitializing = true;
       _videoError = null;
@@ -231,8 +288,12 @@ class _SwipeCardState extends State<SwipeCard> {
         return;
       }
 
-      if (!mounted) return;
+      if (!mounted) {
+        print('Widget not mounted after getting asset');
+        return;
+      }
 
+      print('Getting file for video asset...');
       final file = await asset.file;
       if (file == null) {
         print('File is null for video: ${widget.mediaItem.id}');
@@ -245,22 +306,36 @@ class _SwipeCardState extends State<SwipeCard> {
         return;
       }
 
-      if (!mounted) return;
+      if (!mounted) {
+        print('Widget not mounted after getting file');
+        return;
+      }
 
       print('Creating video controller for: ${file.path}');
+      print('File exists: ${await file.exists()}, size: ${await file.length()} bytes');
       _videoController = VideoPlayerController.file(file);
+      print('Video controller created, initializing...');
       await _videoController!.initialize();
       print('Video controller initialized: ${_videoController!.value.isInitialized}');
       print('Video duration: ${_videoController!.value.duration}');
       print('Video size: ${_videoController!.value.size}');
       
       if (mounted) {
+        // Load mute state and apply it
+        final muted = await VideoSettingsService.isMuted();
+        _videoController!.setVolume(muted ? 0.0 : 1.0);
+        
         setState(() {
           _isVideoInitializing = false;
+          _isMuted = muted;
         });
         // Auto-play video when it's ready
         _videoController!.play();
-        print('Video playback started');
+        print('Video playback started, muted: $muted');
+      } else {
+        print('Widget not mounted after initialization, disposing controller');
+        _videoController?.dispose();
+        _videoController = null;
       }
     } catch (e, stackTrace) {
       print('Error initializing video: $e');
@@ -327,6 +402,18 @@ class _SwipeCardState extends State<SwipeCard> {
 
   @override
   Widget build(BuildContext context) {
+    print('SwipeCard build: isVideo=${widget.mediaItem.isVideo}, hasController=${_videoController != null}, isInitialized=${_videoController?.value.isInitialized ?? false}, isInitializing=$_isVideoInitializing');
+    
+    // If it's a video but controller hasn't been initialized yet, trigger initialization
+    if (widget.mediaItem.isVideo && _videoController == null && !_isVideoInitializing && _videoError == null) {
+      print('SwipeCard build: Video detected but not initialized, triggering init...');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.mediaItem.isVideo && _videoController == null) {
+          _initVideoPlayer();
+        }
+      });
+    }
+    
     return GestureDetector(
       onTap: () => _toggleFullscreen(context),
       child: Card(
@@ -426,6 +513,35 @@ class _SwipeCardState extends State<SwipeCard> {
                 color: Colors.white70,
               ),
             ),
+          // Mute/unmute toggle button
+          Positioned(
+            bottom: 16,
+            right: 16,
+            child: Material(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(24),
+              child: InkWell(
+                onTap: () async {
+                  final newMuted = await VideoSettingsService.toggleMute();
+                  if (_videoController != null) {
+                    _videoController!.setVolume(newMuted ? 0.0 : 1.0);
+                    setState(() {
+                      _isMuted = newMuted;
+                    });
+                  }
+                },
+                borderRadius: BorderRadius.circular(24),
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Icon(
+                    _isMuted ? Icons.volume_off : Icons.volume_up,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

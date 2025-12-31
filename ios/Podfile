@@ -44,6 +44,16 @@ post_install do |installer|
       if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 13.0
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
       end
+      
+      # Suppress deprecation warnings from photo_manager and other pods
+      # These are third-party library warnings that we can't fix
+      config.build_settings['WARNING_CFLAGS'] ||= ['$(inherited)']
+      config.build_settings['WARNING_CFLAGS'] << '-Wno-deprecated-declarations'
+      config.build_settings['WARNING_CFLAGS'] << '-Wno-deprecated-implementations'
+      config.build_settings['WARNING_CFLAGS'] << '-Wno-implicit-retain-self'
+      
+      # Note: PrivacyInfo.xcprivacy warnings are harmless - they're just informational
+      # files that don't need to be processed. They won't affect the build.
     end
   end
 end
