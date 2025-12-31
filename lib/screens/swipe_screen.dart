@@ -1,0 +1,155 @@
+import 'package:flutter/material.dart';
+import '../models/media_item.dart';
+import '../utils/date_utils.dart';
+import '../widgets/logo_widget.dart';
+import '../widgets/swipe_card.dart';
+
+class SwipeScreen extends StatefulWidget {
+  final String dateKey;
+  final List<MediaItem> media;
+
+  const SwipeScreen({
+    super.key,
+    required this.dateKey,
+    required this.media,
+  });
+
+  @override
+  State<SwipeScreen> createState() => _SwipeScreenState();
+}
+
+class _SwipeScreenState extends State<SwipeScreen> {
+  int _currentIndex = 0;
+  final List<MediaItem> _mediaToDelete = [];
+  double _dragOffset = 0.0;
+
+  void _handleSwipe(String direction) {
+    final currentMedia = widget.media[_currentIndex];
+
+    if (direction == 'left') {
+      // Swipe left = delete
+      _mediaToDelete.add(currentMedia);
+    }
+    // Swipe right = keep (do nothing)
+
+    if (_currentIndex < widget.media.length - 1) {
+      setState(() {
+        _currentIndex++;
+        _dragOffset = 0.0;
+      });
+    } else {
+      // All cards swiped, navigate to deletion confirmation
+      Navigator.of(context).pushReplacementNamed(
+        '/deletion-confirmation',
+        arguments: _mediaToDelete,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_currentIndex >= widget.media.length) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    final currentMedia = widget.media[_currentIndex];
+    final progress = ((_currentIndex + 1) / widget.media.length) * 100;
+
+    return Scaffold(
+      body: Column(
+        children: [
+          LogoWidget(selectedDateKey: widget.dateKey),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  AppDateUtils.formatDateForDisplay(widget.dateKey),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  '${_currentIndex + 1} of ${widget.media.length}',
+                  style: const TextStyle(fontSize: 16),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Center(
+              child: GestureDetector(
+                onPanUpdate: (details) {
+                  setState(() {
+                    _dragOffset += details.delta.dx;
+                  });
+                },
+                onPanEnd: (details) {
+                  const threshold = 100.0;
+                  if (_dragOffset.abs() > threshold) {
+                    _handleSwipe(_dragOffset > 0 ? 'right' : 'left');
+                  } else {
+                    setState(() {
+                      _dragOffset = 0.0;
+                    });
+                  }
+                },
+                child: Transform.translate(
+                  offset: Offset(_dragOffset, 0),
+                  child: Transform.rotate(
+                    angle: _dragOffset * 0.001,
+                    child: SizedBox(
+                      width: MediaQuery.of(context).size.width - 40,
+                      height: MediaQuery.of(context).size.height * 0.6,
+                      child: SwipeCard(mediaItem: currentMedia),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                ElevatedButton(
+                  onPressed: () => _handleSwipe('left'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 40,
+                      vertical: 15,
+                    ),
+                  ),
+                  child: const Text('❌ Delete', style: TextStyle(fontSize: 18)),
+                ),
+                ElevatedButton(
+                  onPressed: () => _handleSwipe('right'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 40,
+                      vertical: 15,
+                    ),
+                  ),
+                  child: const Text('✅ Keep', style: TextStyle(fontSize: 18)),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: LinearProgressIndicator(
+              value: progress / 100,
+              minHeight: 4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
