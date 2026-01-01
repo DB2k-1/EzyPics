@@ -206,15 +206,16 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
       controller.forward();
       
       if (years.length > 1) {
-        // Cycle through years - wait 1000ms (full animation duration)
-        _galleryTimer = Timer(const Duration(milliseconds: 1000), () {
+        // Cycle through years - wait 850ms (fade in + full opacity, before fade out starts)
+        // This way we navigate to next card just as fade out begins
+        _galleryTimer = Timer(const Duration(milliseconds: 850), () {
           if (mounted && !_navigationTriggered) {
             _cycleToNextYear(years, controller);
           }
         });
       } else {
-        // Only one year
-        _galleryTimer = Timer(const Duration(milliseconds: 1000), () {
+        // Only one year - navigate after showing it (850ms = fade in + full opacity)
+        _galleryTimer = Timer(const Duration(milliseconds: 850), () {
           if (mounted && !_navigationTriggered) {
             _navigateToSwipe();
           }
@@ -230,18 +231,16 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     
     // Check if all years shown
     if (_currentYearIndex >= years.length - 1) {
-      print('[ANIMATION] All years shown, navigating in 0.5s');
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted && !_navigationTriggered) {
-          _navigateToSwipe();
-        }
-      });
+      print('[ANIMATION] All years shown, navigating immediately');
+      // Navigate immediately - we've shown all years
+      if (mounted && !_navigationTriggered) {
+        _navigateToSwipe();
+      }
       return;
     }
 
-    // The timer fires after 1000ms when animation should be complete (at 1.0, fully faded out)
-    // Don't use reverse() - it causes the card to reappear during reverse
-    // Just reset and show the next card
+    // The timer fires after 850ms (just before fade out starts at 0.85)
+    // Reset and show the next card immediately for smooth transition
     controller.reset();
     setState(() {
       _currentYearIndex++;
@@ -254,11 +253,21 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
       print('[ANIMATION] Starting animation for year ${years[_currentYearIndex]}');
       controller.forward();
       
-      _galleryTimer = Timer(const Duration(milliseconds: 1000), () {
-        if (mounted && !_navigationTriggered) {
-          _cycleToNextYear(years, controller);
-        }
-      });
+      // For the last year, navigate after showing it (850ms)
+      // For other years, cycle to next after 850ms
+      if (_currentYearIndex >= years.length - 1) {
+        _galleryTimer = Timer(const Duration(milliseconds: 850), () {
+          if (mounted && !_navigationTriggered) {
+            _navigateToSwipe();
+          }
+        });
+      } else {
+        _galleryTimer = Timer(const Duration(milliseconds: 850), () {
+          if (mounted && !_navigationTriggered) {
+            _cycleToNextYear(years, controller);
+          }
+        });
+      }
     });
   }
 
