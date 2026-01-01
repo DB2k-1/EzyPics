@@ -9,8 +9,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = (scene as? UIWindowScene) else { return }
         
-        guard let appDelegate = UIApplication.shared.delegate as? FlutterAppDelegate else { return }
-        
         // Create Flutter engine
         let flutterEngine = FlutterEngine(name: "io.flutter", project: nil)
         flutterEngine.run(withEntrypoint: nil)

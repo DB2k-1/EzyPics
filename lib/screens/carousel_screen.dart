@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:photo_manager/photo_manager.dart';
 import '../models/media_item.dart';
 import '../services/photo_service.dart';
 import '../utils/date_utils.dart';
 import '../widgets/logo_widget.dart';
-import '../widgets/year_gallery_item.dart';
+import '../widgets/year_preview_card.dart';
 
 class CarouselScreen extends StatefulWidget {
   const CarouselScreen({super.key});
@@ -19,12 +21,14 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
   Timer? _galleryTimer;
   String _selectedDateKey = AppDateUtils.getTodayDateKey();
   bool _hasInitialized = false;
-  int _visibleYearCount = 0;
+  int _currentYearIndex = 0;
   bool _galleryStarted = false;
   bool _navigationTriggered = false;
-  Map<int, AnimationController> _fadeControllers = {};
+  AnimationController? _fadeController;
   Map<int, List<MediaItem>> _mediaByYear = {};
   List<int> _years = [];
+  Map<int, Uint8List?> _thumbnailCache = {}; // Cache thumbnails by year
+  bool _thumbnailsLoading = false;
 
   @override
   void initState() {
@@ -36,16 +40,14 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     super.didChangeDependencies();
     if (!_hasInitialized) {
       _hasInitialized = true;
-      // Get selected date from arguments if provided
       final args = ModalRoute.of(context)?.settings.arguments;
       if (args != null && args is Map && args['dateKey'] != null) {
         _selectedDateKey = args['dateKey'] as String;
       }
       print('CarouselScreen initialized with dateKey: $_selectedDateKey');
-      // Reset gallery state
       _galleryStarted = false;
       _navigationTriggered = false;
-      _visibleYearCount = 0;
+      _currentYearIndex = 0;
       _scanLibrary();
     }
   }
@@ -53,9 +55,7 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
   @override
   void dispose() {
     _galleryTimer?.cancel();
-    for (final controller in _fadeControllers.values) {
-      controller.dispose();
-    }
+    _fadeController?.dispose();
     super.dispose();
   }
 
@@ -85,17 +85,13 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
   }
 
   void _startGalleryAnimation() {
-    // Prevent multiple calls
     if (_galleryStarted) {
       print('Gallery already started, skipping');
       return;
     }
     
-    // Cancel any existing timers first
     _galleryTimer?.cancel();
     _galleryTimer = null;
-    
-    // Reset navigation flag
     _navigationTriggered = false;
     _galleryStarted = true;
 
@@ -105,12 +101,54 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     print('Starting gallery animation. Media for date $_selectedDateKey: ${mediaForDate.length} items');
     
     if (mediaForDate.isEmpty) {
-      // If no media for this date, just show the empty state - don't navigate
       print('No media found for date $_selectedDateKey');
       return;
     }
 
     _startGalleryWithMedia(mediaForDate);
+  }
+
+  Future<void> _preloadThumbnails(Map<int, List<MediaItem>> mediaByYear, List<int> years) async {
+    setState(() => _thumbnailsLoading = true);
+    print('Pre-loading thumbnails for ${years.length} years...');
+    
+    final thumbnailCache = <int, Uint8List?>{};
+    
+    // Load thumbnails for all years in parallel
+    final futures = years.map((year) async {
+      final firstItem = mediaByYear[year]!.first;
+      try {
+        final asset = await AssetEntity.fromId(firstItem.id);
+        if (asset == null) {
+          print('Asset is null for year $year');
+          return MapEntry(year, null as Uint8List?);
+        }
+        
+        // Use thumbnails for both images and videos (300x300 is sufficient for preview)
+        final thumbnail = await asset.thumbnailDataWithSize(
+          const ThumbnailSize(300, 300),
+        );
+        print('Loaded thumbnail for year $year: ${thumbnail != null ? 'success' : 'failed'}');
+        return MapEntry(year, thumbnail);
+      } catch (e) {
+        print('Error loading thumbnail for year $year: $e');
+        return MapEntry(year, null as Uint8List?);
+      }
+    });
+    
+    final results = await Future.wait(futures);
+    for (final entry in results) {
+      thumbnailCache[entry.key] = entry.value;
+    }
+    
+    if (mounted) {
+      setState(() {
+        _thumbnailCache = thumbnailCache;
+        _thumbnailsLoading = false;
+      });
+      print('Thumbnail pre-loading complete. Starting animation...');
+      _startAnimationAfterPreload(years);
+    }
   }
 
   void _startGalleryWithMedia(List<MediaItem> mediaForDate) {
@@ -120,25 +158,17 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     }
     final years = mediaByYear.keys.toList()..sort((a, b) => b.compareTo(a));
     print('Years found: $years (${years.length} years)');
+    
+    for (final year in years) {
+      final items = mediaByYear[year]!;
+      print('  Year $year: ${items.length} items');
+    }
 
-    // Create a single fade controller for the current card
-    final controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-      value: 0.0, // Start invisible
-    );
-    
-    // Cancel any existing timers
-    _galleryTimer?.cancel();
-    _galleryTimer = null;
-    
-    // Store years and media by year for the build method
+    // Store years and media
     setState(() {
-      _visibleYearCount = 0;
-      _navigationTriggered = false;
-      _fadeControllers = {0: controller}; // Use 0 as key for the single controller
       _mediaByYear = mediaByYear;
       _years = years;
+      _currentYearIndex = 0;
     });
 
     if (years.isEmpty) {
@@ -146,36 +176,46 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
       return;
     }
     
-    print('Starting gallery preview with ${years.length} years');
+    print('Pre-loading thumbnails before starting gallery preview...');
+    _preloadThumbnails(mediaByYear, years);
+  }
 
-    // Fade in the first year immediately
+  void _startAnimationAfterPreload(List<int> years) {
+    if (!mounted || _navigationTriggered) return;
+    
+    // Create animation controller
+    // Total: 1000ms (150ms fade in + 700ms full opacity + 150ms fade out)
+    final controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+      value: 0.0,
+    );
+    
+    setState(() {
+      _fadeController = controller;
+      _currentYearIndex = 0;
+    });
+
+    print('Starting gallery preview with ${years.length} years');
+    
+    // Start first card animation
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _navigationTriggered) return;
       
-      print('Fading in first year: ${years[0]}, total years: ${years.length}');
+      print('Fading in first year: ${years[0]}');
       controller.forward();
-      setState(() {
-        _visibleYearCount = 1;
-      });
-
-      // Start cycling through years - wait 0.75s per card
+      
       if (years.length > 1) {
-        // Wait 0.75s for first card, then cycle through rest
-        print('Multiple years detected, will cycle through them');
-        Timer(const Duration(milliseconds: 750), () {
-          if (!mounted || _navigationTriggered) {
-            print('Widget unmounted or navigation triggered, cancelling cycle');
-            return;
+        // Cycle through years - wait 1000ms (full animation duration)
+        _galleryTimer = Timer(const Duration(milliseconds: 1000), () {
+          if (mounted && !_navigationTriggered) {
+            _cycleToNextYear(years, controller);
           }
-          print('First card shown for 0.75s, cycling to next year');
-          _cycleToNextYear(years, controller);
         });
       } else {
-        // Only one year, wait 0.75 seconds then navigate
-        print('Only one year, waiting 0.75s then navigating');
-        Timer(const Duration(milliseconds: 750), () {
+        // Only one year
+        _galleryTimer = Timer(const Duration(milliseconds: 1000), () {
           if (mounted && !_navigationTriggered) {
-            print('Single year timeout complete, navigating');
             _navigateToSwipe();
           }
         });
@@ -186,12 +226,11 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
   void _cycleToNextYear(List<int> years, AnimationController controller) {
     if (!mounted || _navigationTriggered) return;
     
-    print('_cycleToNextYear called. _visibleYearCount: $_visibleYearCount, years.length: ${years.length}');
+    print('[ANIMATION] Cycling to next year. Current index: $_currentYearIndex, Total: ${years.length}');
     
-    // If we've shown all years, navigate
-    if (_visibleYearCount >= years.length) {
-      print('All years shown, navigating in 0.5s');
-      // Wait a bit after last card before navigating
+    // Check if all years shown
+    if (_currentYearIndex >= years.length - 1) {
+      print('[ANIMATION] All years shown, navigating in 0.5s');
       Future.delayed(const Duration(milliseconds: 500), () {
         if (mounted && !_navigationTriggered) {
           _navigateToSwipe();
@@ -200,83 +239,62 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
       return;
     }
 
-    print('Fading out year ${years[_visibleYearCount - 1]}, will show year ${years[_visibleYearCount]}');
+    // The timer fires after 1000ms when animation should be complete (at 1.0, fully faded out)
+    // Don't use reverse() - it causes the card to reappear during reverse
+    // Just reset and show the next card
+    controller.reset();
+    setState(() {
+      _currentYearIndex++;
+    });
     
-    // Fade out current, then fade in next
-    controller.reverse().then((_) {
+    // Start next animation immediately
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _navigationTriggered) return;
-      setState(() {
-        _visibleYearCount++;
-      });
-      print('Fading in year ${years[_visibleYearCount - 1]}');
+      
+      print('[ANIMATION] Starting animation for year ${years[_currentYearIndex]}');
       controller.forward();
       
-      // Wait 0.75s for this card, then move to next
-      Timer(const Duration(milliseconds: 750), () {
-        if (!mounted || _navigationTriggered) return;
-        _cycleToNextYear(years, controller);
+      _galleryTimer = Timer(const Duration(milliseconds: 1000), () {
+        if (mounted && !_navigationTriggered) {
+          _cycleToNextYear(years, controller);
+        }
       });
     });
   }
 
   void _navigateToSwipe() {
-    if (_navigationTriggered) {
-      print('Navigation already triggered, skipping');
-      return;
-    }
+    if (_navigationTriggered) return;
     
     _navigationTriggered = true;
     print('Navigating to swipe screen - preview complete');
     final media = _mediaMap[_selectedDateKey] ?? [];
     print('Media count for navigation: ${media.length}');
-    final videos = media.where((m) => m.isVideo).toList();
-    final photos = media.where((m) => !m.isVideo).toList();
-    print('CarouselScreen: Passing to SwipeScreen - ${photos.length} photos, ${videos.length} videos');
-    for (final item in media) {
-      print('CarouselScreen: Media item - isVideo: ${item.isVideo}, ID: ${item.id}');
-    }
+    
     _galleryTimer?.cancel();
-    _galleryTimer = null;
+    _fadeController?.stop();
     
-    // Cancel any pending timers
-    for (final controller in _fadeControllers.values) {
-      controller.stop();
-    }
+    if (!mounted) return;
     
-    // Navigate directly - don't wait for callbacks
-    if (!mounted) {
-      print('Widget not mounted, cannot navigate');
-      return;
-    }
-    
-    print('Executing navigation to swipe screen');
     try {
-      final navigator = Navigator.of(context);
-      if (navigator.canPop() || true) { // Always allow navigation
-        navigator.pushReplacementNamed(
-          '/swipe',
-          arguments: {'dateKey': _selectedDateKey, 'media': media},
-        );
-        print('Navigation command sent successfully');
-      } else {
-        print('Navigator cannot navigate');
-      }
+      Navigator.of(context).pushReplacementNamed(
+        '/swipe',
+        arguments: {'dateKey': _selectedDateKey, 'media': media},
+      );
+      print('Navigation command sent successfully');
     } catch (e, stackTrace) {
       print('Navigation error: $e');
       print('Stack trace: $stackTrace');
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
-    // During preview (when showing gallery cards), hide settings and center card
-    final isPreviewing = _years.isNotEmpty && _visibleYearCount > 0 && _visibleYearCount <= _years.length;
+    final isPreviewing = _years.isNotEmpty && _fadeController != null && !_thumbnailsLoading;
     
     return Scaffold(
       body: Column(
         children: [
-          if (!isPreviewing) LogoWidget(selectedDateKey: _selectedDateKey),
+          LogoWidget(selectedDateKey: _selectedDateKey),
           if (!isPreviewing)
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -290,14 +308,14 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
               ],
             ),
           Expanded(
-            child: _isScanning
+            child: _isScanning || _thumbnailsLoading
                 ? const Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         CircularProgressIndicator(),
                         SizedBox(height: 20),
-                        Text('Scanning your photo library...'),
+                        Text('Loading media...'),
                       ],
                     ),
                   )
@@ -308,14 +326,17 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
                           style: TextStyle(fontSize: 18),
                         ),
                       )
-                    : isPreviewing && _fadeControllers.containsKey(0)
+                    : isPreviewing && _currentYearIndex < _years.length
                         ? Center(
                             child: Padding(
                               padding: const EdgeInsets.all(16.0),
-                              child: YearGalleryItem(
-                                year: _years[_visibleYearCount - 1],
-                                mediaItems: _mediaByYear[_years[_visibleYearCount - 1]]!,
-                                fadeAnimation: _fadeControllers[0]!,
+                              child: YearPreviewCard(
+                                key: ValueKey(_years[_currentYearIndex]),
+                                year: _years[_currentYearIndex],
+                                totalItemsForYear: _mediaByYear[_years[_currentYearIndex]]!.length,
+                                thumbnailData: _thumbnailCache[_years[_currentYearIndex]],
+                                isVideo: _mediaByYear[_years[_currentYearIndex]]!.first.isVideo,
+                                fadeAnimation: _fadeController!,
                               ),
                             ),
                           )
@@ -326,5 +347,3 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     );
   }
 }
-
-

@@ -109,7 +109,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                color: Colors.red,
+                color: Colors.blue,
                 shape: BoxShape.circle,
               ),
               child: Text(
@@ -131,7 +131,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Column(
-        children: [
+          children: [
           const LogoWidget(),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),

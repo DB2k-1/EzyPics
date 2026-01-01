@@ -13,15 +13,25 @@ class LogoWidget extends StatelessWidget {
     
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.only(top: 20.0, bottom: 12.0),
+        padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
         child: Column(
           children: [
-            Text(
-              'EzyPics',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onSurface,
+            SizedBox(
+              width: double.infinity,
+              child: Image.asset(
+                'assets/EzyPics_header.png',
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  // Fallback to text if image fails to load
+                  return Text(
+                    'EzyPics',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  );
+                },
               ),
             ),
             if (showDate)

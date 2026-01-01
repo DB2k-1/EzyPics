@@ -160,7 +160,7 @@ class _DeletionConfirmationScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       body: Column(
-        children: [
+          children: [
           const LogoWidget(),
           Padding(
             padding: const EdgeInsets.all(20.0),

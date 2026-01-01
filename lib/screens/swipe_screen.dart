@@ -66,7 +66,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
   @override
   Widget build(BuildContext context) {
     if (_currentIndex >= widget.media.length) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
     }
 
     final currentMedia = widget.media[_currentIndex];
@@ -77,7 +79,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
 
     return Scaffold(
       body: Column(
-        children: [
+          children: [
           LogoWidget(selectedDateKey: widget.dateKey),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
