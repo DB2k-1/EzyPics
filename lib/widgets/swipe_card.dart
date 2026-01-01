@@ -232,8 +232,13 @@ class _FullscreenVideoPlayerState extends State<_FullscreenVideoPlayer> {
 
 class SwipeCard extends StatefulWidget {
   final MediaItem mediaItem;
+  final Uint8List? cachedThumbnail; // Optional cached thumbnail for videos
 
-  const SwipeCard({super.key, required this.mediaItem});
+  const SwipeCard({
+    super.key,
+    required this.mediaItem,
+    this.cachedThumbnail,
+  });
 
   @override
   State<SwipeCard> createState() => _SwipeCardState();
@@ -452,6 +457,34 @@ class _SwipeCardState extends State<SwipeCard> {
     }
 
     if (_isVideoInitializing || _videoController == null || !_videoController!.value.isInitialized) {
+      // Use cached thumbnail if available, otherwise load it
+      final cachedThumb = widget.cachedThumbnail;
+      
+      if (cachedThumb != null) {
+        // Show cached thumbnail immediately (no loading spinner)
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.memory(
+              cachedThumb,
+              fit: BoxFit.cover,
+            ),
+            if (_isVideoInitializing)
+              const Center(
+                child: CircularProgressIndicator(),
+              ),
+            const Center(
+              child: Icon(
+                Icons.play_circle_filled,
+                size: 64,
+                color: Colors.white70,
+              ),
+            ),
+          ],
+        );
+      }
+      
+      // No cached thumbnail, load it
       return FutureBuilder<Uint8List?>(
         future: _getVideoThumbnail(),
         builder: (context, snapshot) {
@@ -590,10 +623,59 @@ class _SwipeCardState extends State<SwipeCard> {
       if (asset == null) {
         return const Center(child: Icon(Icons.image, size: 100));
       }
+      
+      // First, get a thumbnail for immediate display
+      final thumbnail = await asset.thumbnailDataWithSize(
+        const ThumbnailSize(800, 800), // Higher quality thumbnail for better initial display
+      );
+      
+      // Then get the full file
       final file = await asset.file;
       if (file == null) {
+        // If no file, try to show thumbnail if available
+        if (thumbnail != null) {
+          return Image.memory(
+            thumbnail,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return const Center(child: Icon(Icons.image, size: 100));
+            },
+          );
+        }
         return const Center(child: Icon(Icons.image, size: 100));
       }
+      
+      // If we have a thumbnail, show it as background while full image loads on top
+      if (thumbnail != null) {
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            // Thumbnail background (immediate display, always visible)
+            Image.memory(
+              thumbnail,
+              fit: BoxFit.cover,
+            ),
+            // Full resolution image (loads on top, transparent until ready)
+            Image.file(
+              file,
+              fit: BoxFit.cover,
+              frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                // Show full image when frame is available, otherwise show nothing (thumbnail shows through)
+                if (wasSynchronouslyLoaded || frame != null) {
+                  return child;
+                }
+                return const SizedBox.shrink(); // Thumbnail shows through
+              },
+              errorBuilder: (context, error, stackTrace) {
+                // Fallback to thumbnail if full image fails
+                return const SizedBox.shrink(); // Thumbnail shows through
+              },
+            ),
+          ],
+        );
+      }
+      
+      // Fallback to direct file if no thumbnail available
       return Image.file(
         file,
         fit: BoxFit.cover,

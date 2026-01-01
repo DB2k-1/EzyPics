@@ -1,4 +1,6 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:photo_manager/photo_manager.dart';
 import '../models/media_item.dart';
 import '../utils/date_utils.dart';
 import '../widgets/logo_widget.dart';
@@ -22,6 +24,8 @@ class _SwipeScreenState extends State<SwipeScreen> {
   int _currentIndex = 0;
   final List<MediaItem> _mediaToDelete = [];
   double _dragOffset = 0.0;
+  // In-memory cache for video thumbnails (session only, cleared on dispose)
+  final Map<String, Uint8List> _videoThumbnailCache = {};
 
   @override
   void initState() {
@@ -31,6 +35,73 @@ class _SwipeScreenState extends State<SwipeScreen> {
     print('SwipeScreen initState: Total media=${widget.media.length}, Videos=${videos.length}, Photos=${photos.length}');
     for (final item in widget.media) {
       print('SwipeScreen initState: Item - isVideo: ${item.isVideo}, ID: ${item.id}');
+    }
+    
+    // Preload thumbnails for all videos in the background
+    _preloadVideoThumbnails();
+    
+    // Preload the first item's file
+    _preloadNextItem(0);
+  }
+  
+  @override
+  void dispose() {
+    // Clear the cache when screen is disposed
+    _videoThumbnailCache.clear();
+    super.dispose();
+  }
+  
+  Future<void> _preloadVideoThumbnails() async {
+    // Preload thumbnails for all videos in parallel
+    final videoItems = widget.media.where((m) => m.isVideo).toList();
+    print('Preloading thumbnails for ${videoItems.length} videos...');
+    
+    for (final item in videoItems) {
+      // Skip if already cached
+      if (_videoThumbnailCache.containsKey(item.id)) continue;
+      
+      // Load thumbnail in background
+      _loadVideoThumbnail(item.id);
+    }
+  }
+  
+  Future<void> _loadVideoThumbnail(String mediaId) async {
+    try {
+      final asset = await AssetEntity.fromId(mediaId);
+      if (asset == null) return;
+      
+      final thumbnail = await asset.thumbnailDataWithSize(
+        const ThumbnailSize(800, 800), // Higher quality for better display
+      );
+      
+      if (thumbnail != null && mounted) {
+        setState(() {
+          _videoThumbnailCache[mediaId] = thumbnail;
+        });
+        print('Cached thumbnail for video: $mediaId');
+      }
+    } catch (e) {
+      print('Error preloading video thumbnail for $mediaId: $e');
+    }
+  }
+  
+  Future<void> _preloadNextItem(int index) async {
+    if (index >= widget.media.length) return;
+    
+    final item = widget.media[index];
+    try {
+      // Preload the file by getting it (photo_manager will cache it)
+      final asset = await AssetEntity.fromId(item.id);
+      if (asset != null && !item.isVideo) {
+        // For images, preload the file to warm the cache
+        await asset.file;
+        print('Preloaded file for item $index');
+      } else if (asset != null && item.isVideo && !_videoThumbnailCache.containsKey(item.id)) {
+        // For videos, ensure thumbnail is cached
+        _loadVideoThumbnail(item.id);
+      }
+    } catch (e) {
+      print('Error preloading item $index: $e');
     }
   }
 
@@ -44,6 +115,10 @@ class _SwipeScreenState extends State<SwipeScreen> {
     // Swipe right = keep (do nothing)
 
     if (_currentIndex < widget.media.length - 1) {
+      final nextIndex = _currentIndex + 1;
+      // Preload next item in background
+      _preloadNextItem(nextIndex);
+      
       setState(() {
         _currentIndex++;
         _dragOffset = 0.0;
@@ -128,6 +203,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
                       child: SwipeCard(
                         key: ValueKey(currentMedia.id),
                         mediaItem: currentMedia,
+                        cachedThumbnail: _videoThumbnailCache[currentMedia.id],
                       ),
                     ),
                   ),
