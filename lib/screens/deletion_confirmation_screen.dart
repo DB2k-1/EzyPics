@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../models/media_item.dart';
@@ -145,13 +146,45 @@ class _DeletionConfirmationScreenState
     try {
       final asset = await AssetEntity.fromId(item.id);
       if (asset == null) return null;
-      final file = await asset.file;
-      if (file == null) return null;
-      return Image.file(
-        file,
-        fit: BoxFit.cover,
-      );
+      
+      if (item.isVideo) {
+        // For videos, use thumbnail
+        final thumbnail = await asset.thumbnailDataWithSize(
+          const ThumbnailSize(300, 300),
+        );
+        if (thumbnail != null) {
+          return Image.memory(
+            thumbnail,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                color: Colors.grey[300],
+                child: const Icon(Icons.videocam),
+              );
+            },
+          );
+        }
+        return Container(
+          color: Colors.grey[300],
+          child: const Icon(Icons.videocam),
+        );
+      } else {
+        // For photos, use the file directly
+        final file = await asset.file;
+        if (file == null) return null;
+        return Image.file(
+          file,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return Container(
+              color: Colors.grey[300],
+              child: const Icon(Icons.image),
+            );
+          },
+        );
+      }
     } catch (e) {
+      print('Error getting thumbnail for ${item.isVideo ? "video" : "image"}: $e');
       return null;
     }
   }
@@ -196,14 +229,11 @@ class _DeletionConfirmationScreenState
                 return GestureDetector(
                   onTap: () => _toggleSelection(item),
                   child: Stack(
+                    fit: StackFit.expand,
                     children: [
-                      _buildThumbnail(item),
-                      if (isSelected)
-                        Container(
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.red, width: 3),
-                          ),
-                        ),
+                      Positioned.fill(
+                        child: _buildThumbnail(item),
+                      ),
                       if (isSelected)
                         const Positioned(
                           top: 5,
@@ -244,9 +274,15 @@ class _DeletionConfirmationScreenState
                 Expanded(
                   flex: 2,
                   child: ElevatedButton(
-                    onPressed: _isDeleting ? null : _handleDelete,
+                    onPressed: _isDeleting
+                        ? null
+                        : (_selectedIds.isEmpty
+                            ? () {
+                                Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+                              }
+                            : _handleDelete),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
+                      backgroundColor: _selectedIds.isEmpty ? Colors.grey : Colors.red,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
                     child: _isDeleting
@@ -256,7 +292,9 @@ class _DeletionConfirmationScreenState
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : Text(
-                            'Delete ${_selectedIds.length} Item${_selectedIds.length != 1 ? 's' : ''}',
+                            _selectedIds.isEmpty
+                                ? 'Return Home'
+                                : 'Delete ${_selectedIds.length} Item${_selectedIds.length != 1 ? 's' : ''}',
                             style: const TextStyle(fontSize: 16),
                           ),
                   ),

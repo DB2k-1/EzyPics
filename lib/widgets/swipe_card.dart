@@ -501,9 +501,32 @@ class _SwipeCardState extends State<SwipeCard> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          AspectRatio(
-            aspectRatio: _videoController!.value.aspectRatio,
-            child: VideoPlayer(_videoController!),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final videoAspectRatio = _videoController!.value.aspectRatio;
+              final containerAspectRatio = constraints.maxWidth / constraints.maxHeight;
+              
+              double videoWidth;
+              double videoHeight;
+              
+              if (videoAspectRatio > containerAspectRatio) {
+                // Video is wider - fit to width
+                videoWidth = constraints.maxWidth;
+                videoHeight = videoWidth / videoAspectRatio;
+              } else {
+                // Video is taller - fit to height
+                videoHeight = constraints.maxHeight;
+                videoWidth = videoHeight * videoAspectRatio;
+              }
+              
+              return Center(
+                child: SizedBox(
+                  width: videoWidth,
+                  height: videoHeight,
+                  child: VideoPlayer(_videoController!),
+                ),
+              );
+            },
           ),
           if (!_videoController!.value.isPlaying)
             const Center(
