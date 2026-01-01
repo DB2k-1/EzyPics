@@ -17,6 +17,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Map<String, List<MediaItem>> _mediaMap = {};
   bool _isLoading = true;
   bool _isGenerating = false;
+  DateTime _focusedDay = DateTime.now();
 
   @override
   void initState() {
@@ -39,17 +40,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Map<DateTime, List<dynamic>> _getMarkedDates() {
     final markedDates = <DateTime, List<dynamic>>{};
-    final currentYear = DateTime.now().year;
+    final focusedYear = _focusedDay.year;
     
-    // Mark dates for the current year only (for display purposes)
+    // Mark dates for the focused year (for display purposes)
     _mediaMap.forEach((dateKey, mediaItems) {
       if (mediaItems.isNotEmpty) {
         final parts = dateKey.split('-');
         final month = int.parse(parts[0]);
         final day = int.parse(parts[1]);
         
-        final currentYearDate = DateTime(currentYear, month, day);
-        markedDates[currentYearDate] = ['media'];
+        final focusedYearDate = DateTime(focusedYear, month, day);
+        markedDates[focusedYearDate] = ['media'];
       }
     });
     
@@ -75,17 +76,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildCalendar() {
     final markedDates = _getMarkedDates();
-    final currentYear = DateTime.now().year;
+    final now = DateTime.now();
     
     return TableCalendar(
-      firstDay: DateTime(currentYear, 1, 1),
-      lastDay: DateTime(currentYear, 12, 31),
-      focusedDay: DateTime(currentYear, DateTime.now().month, DateTime.now().day),
+      firstDay: DateTime(now.year - 10, 1, 1),
+      lastDay: DateTime(now.year + 10, 12, 31),
+      focusedDay: _focusedDay,
       calendarFormat: CalendarFormat.month,
       startingDayOfWeek: StartingDayOfWeek.monday,
       eventLoader: (date) => markedDates[date] ?? [],
       selectedDayPredicate: (day) => false,
       onDaySelected: _handleDaySelected,
+      onPageChanged: (focusedDay) {
+        setState(() {
+          _focusedDay = focusedDay;
+        });
+      },
       calendarStyle: CalendarStyle(
         markersMaxCount: 1,
         markerDecoration: const BoxDecoration(
@@ -94,9 +100,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         outsideDaysVisible: false,
       ),
-      headerStyle: const HeaderStyle(
+      headerStyle: HeaderStyle(
         formatButtonVisible: false,
         titleCentered: true,
+        titleTextFormatter: (date, locale) {
+          const monthNames = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+          ];
+          return monthNames[date.month - 1];
+        },
       ),
       calendarBuilders: CalendarBuilders(
         markerBuilder: (context, date, events) {
@@ -104,21 +117,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           final count = _getMediaCountForDateKey(dateKey);
           if (count == 0) return null;
           
+          // Simple blue circle marker
           return Positioned(
             bottom: 1,
             child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
+              width: 6,
+              height: 6,
+              decoration: const BoxDecoration(
                 color: Colors.blue,
                 shape: BoxShape.circle,
-              ),
-              child: Text(
-                count > 99 ? '99+' : count.toString(),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 9,
-                  fontWeight: FontWeight.bold,
-                ),
               ),
             ),
           );
