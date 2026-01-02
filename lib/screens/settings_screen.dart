@@ -67,6 +67,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final dateKey = AppDateUtils.getDateKey(selectedDate);
     final media = _mediaMap[dateKey] ?? [];
     
+    // Only navigate if there's media for this date
+    if (media.isEmpty) {
+      return;
+    }
+    
     // Navigate back to carousel with the selected date
     Navigator.of(context).pushReplacementNamed(
       '/carousel',
@@ -149,19 +154,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: const Text('← Back'),
                 ),
                 const Spacer(),
-                const Text(
-                  'Select Date',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
+                GestureDetector(
+                  onTap: () => _showTestPhotoDialog(),
+                  child: const Text(
+                    'Select Date',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
                 const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.bug_report),
-                  tooltip: 'Generate Test Photos (Long Press)',
-                  onPressed: () => _showTestPhotoDialog(),
-                ),
+                // Spacer to balance the layout (bug button removed)
+                const SizedBox(width: 48),
               ],
             ),
           ),

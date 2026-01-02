@@ -201,7 +201,10 @@ class _SwipeScreenState extends State<SwipeScreen> {
     return Scaffold(
       body: Column(
           children: [
-          LogoWidget(selectedDateKey: widget.dateKey),
+          LogoWidget(
+            selectedDateKey: widget.dateKey,
+            onTap: () => Navigator.of(context).pushReplacementNamed('/home'),
+          ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             child: Row(

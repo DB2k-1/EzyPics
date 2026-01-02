@@ -194,7 +194,9 @@ class _DeletionConfirmationScreenState
     return Scaffold(
       body: Column(
           children: [
-          const LogoWidget(),
+          LogoWidget(
+            onTap: () => Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false),
+          ),
           Padding(
             padding: const EdgeInsets.all(20.0),
             child: Column(
