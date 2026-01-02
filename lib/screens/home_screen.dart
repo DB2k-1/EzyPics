@@ -147,15 +147,15 @@ class _HomeScreenState extends State<HomeScreen> {
                             showShareButton: true,
                             onShare: () => _shareStats(),
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 24),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16.0),
                             child: OutlinedButton.icon(
                               onPressed: () {
                                 Navigator.of(context).pushNamed('/settings');
                               },
-                              icon: const Icon(Icons.settings),
-                              label: const Text('Settings'),
+                              icon: const Icon(Icons.calendar_today),
+                              label: const Text('Date Selector'),
                               style: OutlinedButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(vertical: 12),
                               ),
