@@ -76,6 +76,7 @@ flutter:
     - assets/test_video.mov
     - assets/app_icon.png
     - assets/EzyPics_header.png
+    - assets/EzyPics_big_banner_cropped.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -26,6 +26,8 @@ class _SwipeScreenState extends State<SwipeScreen> {
   double _dragOffset = 0.0;
   // In-memory cache for video thumbnails (session only, cleared on dispose)
   final Map<String, Uint8List> _videoThumbnailCache = {};
+  // In-memory cache for image thumbnails (session only, cleared on dispose)
+  final Map<String, Uint8List> _imageThumbnailCache = {};
 
   @override
   void initState() {
@@ -37,8 +39,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
       print('SwipeScreen initState: Item - isVideo: ${item.isVideo}, ID: ${item.id}');
     }
     
-    // Preload thumbnails for all videos in the background
+    // Preload thumbnails for all videos and images in the background
     _preloadVideoThumbnails();
+    _preloadImageThumbnails();
     
     // Preload the first item's file
     _preloadNextItem(0);
@@ -48,6 +51,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
   void dispose() {
     // Clear the cache when screen is disposed
     _videoThumbnailCache.clear();
+    _imageThumbnailCache.clear();
     super.dispose();
   }
   
@@ -62,6 +66,44 @@ class _SwipeScreenState extends State<SwipeScreen> {
       
       // Load thumbnail in background
       _loadVideoThumbnail(item.id);
+    }
+  }
+  
+  Future<void> _preloadImageThumbnails() async {
+    // Preload thumbnails for all images in parallel
+    final imageItems = widget.media.where((m) => !m.isVideo).toList();
+    print('Preloading thumbnails for ${imageItems.length} images...');
+    
+    // Load thumbnails in parallel batches
+    final futures = imageItems.map((item) async {
+      if (_imageThumbnailCache.containsKey(item.id)) return;
+      await _loadImageThumbnail(item.id);
+    });
+    
+    // Process in batches of 5 to avoid overwhelming the system
+    for (int i = 0; i < futures.length; i += 5) {
+      final batch = futures.skip(i).take(5).toList();
+      await Future.wait(batch);
+    }
+  }
+  
+  Future<void> _loadImageThumbnail(String mediaId) async {
+    try {
+      final asset = await AssetEntity.fromId(mediaId);
+      if (asset == null) return;
+      
+      final thumbnail = await asset.thumbnailDataWithSize(
+        const ThumbnailSize(1200, 1200), // Higher quality for better display
+      );
+      
+      if (thumbnail != null && mounted) {
+        setState(() {
+          _imageThumbnailCache[mediaId] = thumbnail;
+        });
+        print('Cached thumbnail for image: $mediaId');
+      }
+    } catch (e) {
+      print('Error preloading image thumbnail for $mediaId: $e');
     }
   }
   
@@ -95,6 +137,10 @@ class _SwipeScreenState extends State<SwipeScreen> {
       if (asset != null && !item.isVideo) {
         // For images, preload the file to warm the cache
         await asset.file;
+        // Also ensure thumbnail is cached
+        if (!_imageThumbnailCache.containsKey(item.id)) {
+          _loadImageThumbnail(item.id);
+        }
         print('Preloaded file for item $index');
       } else if (asset != null && item.isVideo && !_videoThumbnailCache.containsKey(item.id)) {
         // For videos, ensure thumbnail is cached
@@ -162,7 +208,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  AppDateUtils.formatDateForDisplay(widget.dateKey),
+                  AppDateUtils.formatDateForDisplay(widget.dateKey, year: currentMedia.year),
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
@@ -203,7 +249,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
                       child: SwipeCard(
                         key: ValueKey(currentMedia.id),
                         mediaItem: currentMedia,
-                        cachedThumbnail: _videoThumbnailCache[currentMedia.id],
+                        cachedThumbnail: currentMedia.isVideo 
+                            ? _videoThumbnailCache[currentMedia.id]
+                            : _imageThumbnailCache[currentMedia.id],
                       ),
                     ),
                   ),

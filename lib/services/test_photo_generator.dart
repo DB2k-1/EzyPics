@@ -116,11 +116,17 @@ class TestPhotoGenerator {
               print('✗ Video file creation failed: $year-$i');
             }
           } else {
-            // Create photo file
+            // Create photo file - 50% chance of landscape vs portrait
+            // Using 4:3 aspect ratio (iPhone default) with full iPhone 12MP resolutions
+            final isLandscape = random.nextDouble() < 0.5;
+            // iPhone 12MP photos: 4032x3024 (landscape) or 3024x4032 (portrait)
+            final width = isLandscape ? 4032 : 3024;
+            final height = isLandscape ? 3024 : 4032;
+            
             final imageFile = await _createTestImage(
               color: color,
-              width: 800,
-              height: 600,
+              width: width,
+              height: height,
               text: '$ukDate\nTest Photo #${i + 1}',
               directory: tempDir,
               filename: 'test_${year}_$i.jpg',

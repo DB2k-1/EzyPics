@@ -12,15 +12,34 @@ class AppDateUtils {
   static String formatDateForDisplay(String dateKey, {int? year}) {
     final parts = dateKey.split('-');
     final month = int.parse(parts[0]);
-    final day = parts[1];
+    final day = int.parse(parts[1]);
     
     const monthNames = [
       'January', 'February', 'March', 'April', 'May', 'June',
       'July', 'August', 'September', 'October', 'November', 'December'
     ];
     
+    // Get ordinal suffix for the day
+    String getOrdinalSuffix(int day) {
+      if (day >= 11 && day <= 13) {
+        return 'th';
+      }
+      switch (day % 10) {
+        case 1:
+          return 'st';
+        case 2:
+          return 'nd';
+        case 3:
+          return 'rd';
+        default:
+          return 'th';
+      }
+    }
+    
     final monthName = monthNames[month - 1];
-    return year != null ? '$monthName $day, $year' : '$monthName $day';
+    final dayWithSuffix = '$day${getOrdinalSuffix(day)}';
+    
+    return year != null ? '$dayWithSuffix $monthName, $year' : '$dayWithSuffix $monthName';
   }
 }
 

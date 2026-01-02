@@ -55,15 +55,15 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Column(
           children: [
             const LogoWidget(),
+            const SizedBox(height: 16), // Match gap between button and stats header
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : SingleChildScrollView(
-                      padding: const EdgeInsets.all(16.0),
+                      padding: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 16.0),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          const SizedBox(height: 8),
                           // Review Media button - white bubble with app icon
                           InkWell(
                             onTap: () {

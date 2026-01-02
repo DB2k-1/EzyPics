@@ -232,7 +232,7 @@ class _FullscreenVideoPlayerState extends State<_FullscreenVideoPlayer> {
 
 class SwipeCard extends StatefulWidget {
   final MediaItem mediaItem;
-  final Uint8List? cachedThumbnail; // Optional cached thumbnail for videos
+  final Uint8List? cachedThumbnail; // Optional cached thumbnail for videos and images
 
   const SwipeCard({
     super.key,
@@ -428,15 +428,7 @@ class _SwipeCardState extends State<SwipeCard> {
           borderRadius: BorderRadius.circular(16),
           child: widget.mediaItem.isVideo
               ? _buildVideoWidget()
-              : FutureBuilder<Widget>(
-                  future: _buildImageWidget(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    return snapshot.data ?? const Center(child: Icon(Icons.image));
-                  },
-                ),
+              : _buildImageWidgetWithCache(),
         ),
       ),
     );
@@ -617,29 +609,72 @@ class _SwipeCardState extends State<SwipeCard> {
     return null;
   }
 
-  Future<Widget> _buildImageWidget() async {
+  Widget _buildImageWidgetWithCache() {
+    // Determine fit based on aspect ratio
+    final isLandscape = widget.mediaItem.width > widget.mediaItem.height;
+    final fit = isLandscape ? BoxFit.cover : BoxFit.contain;
+    
+    // Use cached thumbnail if available for instant display
+    final cachedThumb = widget.cachedThumbnail;
+    
+    if (cachedThumb != null) {
+      // Show cached thumbnail immediately while loading full image
+      return FutureBuilder<Widget>(
+        future: _buildImageWidget(cachedThumb: cachedThumb, fit: fit),
+        builder: (context, snapshot) {
+          // Show cached thumbnail immediately with proper fit
+          // When full image loads, it will replace the thumbnail
+          if (snapshot.hasData) {
+            return snapshot.data!;
+          }
+          // Show cached thumbnail while loading
+          return Center(
+            child: Image.memory(
+              cachedThumb,
+              fit: fit,
+            ),
+          );
+        },
+      );
+    }
+    
+    // No cached thumbnail, load it
+    return FutureBuilder<Widget>(
+      future: _buildImageWidget(fit: fit),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        return snapshot.data ?? const Center(child: Icon(Icons.image));
+      },
+    );
+  }
+
+  Future<Widget> _buildImageWidget({Uint8List? cachedThumb, required BoxFit fit}) async {
     try {
       final asset = await AssetEntity.fromId(widget.mediaItem.id);
       if (asset == null) {
         return const Center(child: Icon(Icons.image, size: 100));
       }
       
-      // First, get a thumbnail for immediate display
-      final thumbnail = await asset.thumbnailDataWithSize(
-        const ThumbnailSize(800, 800), // Higher quality thumbnail for better initial display
-      );
+      // Use cached thumbnail if provided, otherwise load it
+      Uint8List? thumbnail = cachedThumb;
+      if (thumbnail == null) {
+        thumbnail = await asset.thumbnailDataWithSize(
+          const ThumbnailSize(1200, 1200), // Higher quality thumbnail
+        );
+      }
       
       // Then get the full file
       final file = await asset.file;
       if (file == null) {
         // If no file, try to show thumbnail if available
         if (thumbnail != null) {
-          return Image.memory(
-            thumbnail,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return const Center(child: Icon(Icons.image, size: 100));
-            },
+          return Center(
+            child: Image.memory(
+              thumbnail,
+              fit: fit,
+            ),
           );
         }
         return const Center(child: Icon(Icons.image, size: 100));
@@ -647,41 +682,41 @@ class _SwipeCardState extends State<SwipeCard> {
       
       // If we have a thumbnail, show it as background while full image loads on top
       if (thumbnail != null) {
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            // Thumbnail background (immediate display, always visible)
-            Image.memory(
-              thumbnail,
-              fit: BoxFit.cover,
-            ),
-            // Full resolution image (loads on top, transparent until ready)
-            Image.file(
-              file,
-              fit: BoxFit.cover,
-              frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-                // Show full image when frame is available, otherwise show nothing (thumbnail shows through)
-                if (wasSynchronouslyLoaded || frame != null) {
-                  return child;
-                }
-                return const SizedBox.shrink(); // Thumbnail shows through
-              },
-              errorBuilder: (context, error, stackTrace) {
-                // Fallback to thumbnail if full image fails
-                return const SizedBox.shrink(); // Thumbnail shows through
-              },
-            ),
-          ],
+        return Center(
+          child: Image.file(
+            file,
+            fit: fit,
+            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+              // Show full image when frame is available, otherwise show thumbnail
+              if (wasSynchronouslyLoaded || frame != null) {
+                return child;
+              }
+              // Show thumbnail while loading
+              return Image.memory(
+                thumbnail!,
+                fit: fit,
+              );
+            },
+            errorBuilder: (context, error, stackTrace) {
+              // Fallback to thumbnail if full image fails
+              return Image.memory(
+                thumbnail!,
+                fit: fit,
+              );
+            },
+          ),
         );
       }
       
       // Fallback to direct file if no thumbnail available
-      return Image.file(
-        file,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) {
-          return const Center(child: Icon(Icons.image, size: 100));
-        },
+      return Center(
+        child: Image.file(
+          file,
+          fit: fit,
+          errorBuilder: (context, error, stackTrace) {
+            return const Center(child: Icon(Icons.image, size: 100));
+          },
+        ),
       );
     } catch (e) {
       print('Error building image widget: $e');
