@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/stats_service.dart';
+import '../services/photo_service.dart';
+import '../utils/date_utils.dart';
 import '../widgets/logo_widget.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -66,8 +68,19 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           // Review Media button - white bubble with app icon
                           InkWell(
-                            onTap: () {
-                              Navigator.of(context).pushReplacementNamed('/carousel');
+                            onTap: () async {
+                              // Check if there's media for today's date
+                              final todayKey = AppDateUtils.getTodayDateKey();
+                              final mediaMap = await PhotoService.scanMediaByDate();
+                              final mediaForToday = mediaMap[todayKey] ?? [];
+                              
+                              if (mediaForToday.isEmpty) {
+                                // No media for today, go to date selector
+                                Navigator.of(context).pushReplacementNamed('/settings');
+                              } else {
+                                // Has media, go to carousel
+                                Navigator.of(context).pushReplacementNamed('/carousel');
+                              }
                             },
                             borderRadius: BorderRadius.circular(12),
                             child: Container(

@@ -18,6 +18,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isLoading = true;
   bool _isGenerating = false;
   DateTime _focusedDay = DateTime.now();
+  int _selectDateTapCount = 0;
 
   @override
   void initState() {
@@ -152,12 +153,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Row(
               children: [
                 TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () => Navigator.of(context).pushReplacementNamed('/home'),
                   child: const Text('← Back'),
                 ),
                 const Spacer(),
                 GestureDetector(
-                  onTap: () => _showTestPhotoDialog(),
+                  onTap: () {
+                    _selectDateTapCount++;
+                    if (_selectDateTapCount >= 6) {
+                      _selectDateTapCount = 0; // Reset counter
+                      _showTestPhotoDialog();
+                    }
+                  },
                   child: const Text(
                     'Select Date',
                     style: TextStyle(
