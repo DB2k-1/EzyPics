@@ -23,7 +23,7 @@ class SwipeScreen extends StatefulWidget {
 class _SwipeScreenState extends State<SwipeScreen> {
   int _currentIndex = 0;
   final List<MediaItem> _mediaToDelete = [];
-  double _dragOffset = 0.0;
+  final ValueNotifier<double> _dragOffsetNotifier = ValueNotifier<double>(0.0);
   // In-memory cache for video thumbnails (session only, cleared on dispose)
   final Map<String, Uint8List> _videoThumbnailCache = {};
   // In-memory cache for image thumbnails (session only, cleared on dispose)
@@ -52,6 +52,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
     // Clear the cache when screen is disposed
     _videoThumbnailCache.clear();
     _imageThumbnailCache.clear();
+    _dragOffsetNotifier.dispose();
     super.dispose();
   }
   
@@ -165,9 +166,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
       // Preload next item in background
       _preloadNextItem(nextIndex);
       
+      _dragOffsetNotifier.value = 0.0;
       setState(() {
         _currentIndex++;
-        _dragOffset = 0.0;
       });
     } else {
       // All cards swiped
@@ -202,7 +203,6 @@ class _SwipeScreenState extends State<SwipeScreen> {
       body: Column(
           children: [
           LogoWidget(
-            selectedDateKey: widget.dateKey,
             onTap: () => Navigator.of(context).pushReplacementNamed('/home'),
           ),
           Padding(
@@ -227,37 +227,44 @@ class _SwipeScreenState extends State<SwipeScreen> {
           Expanded(
             child: Center(
               child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onPanUpdate: (details) {
-                  setState(() {
-                    _dragOffset += details.delta.dx;
-                  });
+                  final currentOffset = _dragOffsetNotifier.value;
+                  final newOffset = (currentOffset + details.delta.dx).clamp(-500.0, 500.0);
+                  _dragOffsetNotifier.value = newOffset;
                 },
                 onPanEnd: (details) {
                   const threshold = 100.0;
-                  if (_dragOffset.abs() > threshold) {
-                    _handleSwipe(_dragOffset > 0 ? 'right' : 'left');
+                  final offset = _dragOffsetNotifier.value;
+                  if (offset.abs() > threshold) {
+                    _handleSwipe(offset > 0 ? 'right' : 'left');
                   } else {
-                    setState(() {
-                      _dragOffset = 0.0;
-                    });
+                    _dragOffsetNotifier.value = 0.0;
                   }
                 },
-                child: Transform.translate(
-                  offset: Offset(_dragOffset, 0),
-                  child: Transform.rotate(
-                    angle: _dragOffset * 0.001,
-                    child: SizedBox(
-                      width: MediaQuery.of(context).size.width - 40,
-                      height: MediaQuery.of(context).size.height * 0.6,
-                      child: SwipeCard(
-                        key: ValueKey(currentMedia.id),
-                        mediaItem: currentMedia,
-                        cachedThumbnail: currentMedia.isVideo 
-                            ? _videoThumbnailCache[currentMedia.id]
-                            : _imageThumbnailCache[currentMedia.id],
+                child: ValueListenableBuilder<double>(
+                  valueListenable: _dragOffsetNotifier,
+                  builder: (context, dragOffset, child) {
+                    return RepaintBoundary(
+                      child: Transform.translate(
+                        offset: Offset(dragOffset, 0),
+                        child: Transform.rotate(
+                          angle: dragOffset * 0.001,
+                          child: SizedBox(
+                            width: MediaQuery.of(context).size.width - 40,
+                            height: MediaQuery.of(context).size.height * 0.6,
+                            child: SwipeCard(
+                              key: ValueKey(currentMedia.id),
+                              mediaItem: currentMedia,
+                              cachedThumbnail: currentMedia.isVideo 
+                                  ? _videoThumbnailCache[currentMedia.id]
+                                  : _imageThumbnailCache[currentMedia.id],
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
+                    );
+                  },
                 ),
               ),
             ),

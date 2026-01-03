@@ -269,7 +269,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           final size = box.size;
                           final totalStorage = _photoStorageBytes + _videoStorageBytes;
                           final storageFormatted = StatsService.formatBytes(totalStorage);
-                          final message = "I've deleted $_photosDeleted ${_photosDeleted == 1 ? 'photo' : 'photos'} and $_videosDeleted ${_videosDeleted == 1 ? 'video' : 'videos'} from my phone and saved $storageFormatted using EzyPics.";
+                          final message = "I've deleted $_photosDeleted ${_photosDeleted == 1 ? 'photo' : 'photos'} and $_videosDeleted ${_videosDeleted == 1 ? 'video' : 'videos'} from my phone and saved $storageFormatted using EzyPics.\n\nGet it on the App Store here: https://apps.apple.com/us/app/ezypics/id6757226178";
                           
                           try {
                             await Share.share(
