@@ -192,6 +192,16 @@ class _SwipeScreenState extends State<SwipeScreen> {
       _preloadNextItem(newIndex);
     }
     
+    // Check if we've reached the end
+    if (newIndex >= widget.media.length) {
+      // All cards swiped, navigate immediately
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _onEnd();
+        }
+      });
+    }
+    
     return true; // Allow the swipe
   }
 
@@ -268,12 +278,19 @@ class _SwipeScreenState extends State<SwipeScreen> {
               maxAngle: 30,
               duration: const Duration(milliseconds: 200),
               scale: 0.9,
-              numberOfCardsDisplayed: 2,
+              numberOfCardsDisplayed: 1, // Only show one card at a time to prevent ghost cards
+              isLoop: false, // Don't loop - prevent cards from reappearing
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 25),
               onSwipe: _onSwipe,
               onEnd: _onEnd,
               cardBuilder: (context, index, percentThresholdX, percentThresholdY) {
                 if (index >= widget.media.length) {
+                  return const SizedBox.shrink();
+                }
+                
+                // Only build the card if it's the current index or hasn't been swiped yet
+                // This prevents building cards that are already swiped away
+                if (index < _currentIndex) {
                   return const SizedBox.shrink();
                 }
                 
@@ -302,7 +319,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
                     width: cardWidth,
                     height: cardHeight,
                     child: SwipeCard(
-                      key: ValueKey(mediaItem.id),
+                      key: ValueKey('${mediaItem.id}_$index'), // Include index to force rebuild
                       mediaItem: mediaItem,
                       cachedThumbnail: mediaItem.isVideo 
                           ? _videoThumbnailCache[mediaItem.id]
