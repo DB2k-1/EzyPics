@@ -304,18 +304,6 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
       body: Column(
         children: [
           LogoWidget(selectedDateKey: _selectedDateKey),
-          if (!isPreviewing)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.settings),
-                  onPressed: () {
-                    Navigator.of(context).pushNamed('/settings');
-                  },
-                ),
-              ],
-            ),
           Expanded(
             child: _isScanning || _thumbnailsLoading
                 ? const Center(
