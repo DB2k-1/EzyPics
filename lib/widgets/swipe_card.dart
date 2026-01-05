@@ -254,12 +254,7 @@ class _SwipeCardState extends State<SwipeCard> {
   void initState() {
     super.initState();
     print('SwipeCard initState: isVideo=${widget.mediaItem.isVideo}, ID=${widget.mediaItem.id}');
-    if (widget.mediaItem.isVideo) {
-      print('SwipeCard: Initializing video player...');
-      _initVideoPlayer();
-    } else {
-      print('SwipeCard: Not a video, skipping video initialization');
-    }
+    // Don't auto-initialize video - wait for user to tap play button
   }
 
   Future<void> _initVideoPlayer() async {
@@ -334,9 +329,8 @@ class _SwipeCardState extends State<SwipeCard> {
           _isVideoInitializing = false;
           _isMuted = muted;
         });
-        // Auto-play video when it's ready
-        _videoController!.play();
-        print('Video playback started, muted: $muted');
+        // Don't auto-play - user must tap play button
+        print('Video controller ready, muted: $muted');
       } else {
         print('Widget not mounted after initialization, disposing controller');
         _videoController?.dispose();
@@ -409,32 +403,48 @@ class _SwipeCardState extends State<SwipeCard> {
   Widget build(BuildContext context) {
     print('SwipeCard build: isVideo=${widget.mediaItem.isVideo}, hasController=${_videoController != null}, isInitialized=${_videoController?.value.isInitialized ?? false}, isInitializing=$_isVideoInitializing');
     
-    // If it's a video but controller hasn't been initialized yet, trigger initialization
-    if (widget.mediaItem.isVideo && _videoController == null && !_isVideoInitializing && _videoError == null) {
-      print('SwipeCard build: Video detected but not initialized, triggering init...');
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && widget.mediaItem.isVideo && _videoController == null) {
-          _initVideoPlayer();
-        }
-      });
-    }
+    // Don't auto-initialize video - wait for user to tap play button
     
-    return GestureDetector(
-      onTap: () => _toggleFullscreen(context),
-      child: Card(
-        elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: widget.mediaItem.isVideo
-              ? _buildVideoWidget()
-              : _buildImageWidgetWithCache(),
+    return RepaintBoundary(
+      child: GestureDetector(
+        onTap: () => _toggleFullscreen(context),
+        child: Card(
+          elevation: 4,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return widget.mediaItem.isVideo
+                    ? _buildVideoWidget(constraints)
+                    : _buildImageWidgetWithCache(constraints);
+              },
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildVideoWidget() {
+  Widget _buildVideoWidget(BoxConstraints constraints) {
+    // Calculate aspect ratio first
+    final aspectRatio = widget.mediaItem.width / widget.mediaItem.height;
+    final isLandscape = widget.mediaItem.width > widget.mediaItem.height;
+    
+    // Calculate dimensions: landscape fills width, portrait fills height
+    double videoWidth;
+    double videoHeight;
+    
+    if (isLandscape) {
+      // Landscape: fill width, calculate height
+      videoWidth = constraints.maxWidth;
+      videoHeight = videoWidth / aspectRatio;
+    } else {
+      // Portrait: fill height, calculate width
+      videoHeight = constraints.maxHeight;
+      videoWidth = videoHeight * aspectRatio;
+    }
+    
     if (_videoError != null) {
       return Center(
         child: Column(
@@ -448,18 +458,102 @@ class _SwipeCardState extends State<SwipeCard> {
       );
     }
 
-    if (_isVideoInitializing || _videoController == null || !_videoController!.value.isInitialized) {
-      // Use cached thumbnail if available, otherwise load it
-      final cachedThumb = widget.cachedThumbnail;
-      
-      if (cachedThumb != null) {
-        // Show cached thumbnail immediately (no loading spinner)
-        return Stack(
+    // Use cached thumbnail if available, otherwise load it
+    final cachedThumb = widget.cachedThumbnail;
+    
+    // If video is initialized and playing, show player
+    if (_videoController != null && _videoController!.value.isInitialized && _videoController!.value.isPlaying) {
+      return GestureDetector(
+        onTap: () {
+          if (_videoController!.value.isPlaying) {
+            _videoController!.pause();
+            setState(() {});
+          } else {
+            _videoController!.play();
+            setState(() {});
+          }
+        },
+        child: Stack(
           fit: StackFit.expand,
           children: [
-            Image.memory(
-              cachedThumb,
-              fit: BoxFit.cover,
+            Center(
+              child: SizedBox(
+                width: videoWidth,
+                height: videoHeight,
+                child: VideoPlayer(_videoController!),
+              ),
+            ),
+            if (!_videoController!.value.isPlaying)
+              const Center(
+                child: Icon(
+                  Icons.play_circle_filled,
+                  size: 64,
+                  color: Colors.white70,
+                ),
+              ),
+            // Mute/unmute toggle button
+            Positioned(
+              bottom: 16,
+              right: 16,
+              child: Material(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(24),
+                child: InkWell(
+                  onTap: () async {
+                    final newMuted = await VideoSettingsService.toggleMute();
+                    if (_videoController != null) {
+                      _videoController!.setVolume(newMuted ? 0.0 : 1.0);
+                      setState(() {
+                        _isMuted = newMuted;
+                      });
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(24),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Icon(
+                      _isMuted ? Icons.volume_off : Icons.volume_up,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    // Show thumbnail with play button - don't initialize video until play is tapped
+    if (cachedThumb != null) {
+      return GestureDetector(
+        onTap: () {
+          // Initialize and play video when tapped
+          if (_videoController == null || !_videoController!.value.isInitialized) {
+            _initVideoPlayer().then((_) {
+              if (_videoController != null && _videoController!.value.isInitialized && mounted) {
+                _videoController!.play();
+                setState(() {});
+              }
+            });
+          } else {
+            _videoController!.play();
+            setState(() {});
+          }
+        },
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Center(
+              child: SizedBox(
+                width: videoWidth,
+                height: videoHeight,
+                child: Image.memory(
+                  cachedThumb,
+                  fit: BoxFit.contain,
+                ),
+              ),
             ),
             if (_isVideoInitializing)
               const Center(
@@ -468,130 +562,74 @@ class _SwipeCardState extends State<SwipeCard> {
             const Center(
               child: Icon(
                 Icons.play_circle_filled,
-                size: 64,
-                color: Colors.white70,
+                size: 80,
+                color: Colors.white,
               ),
             ),
           ],
-        );
-      }
-      
-      // No cached thumbnail, load it
-      return FutureBuilder<Uint8List?>(
-        future: _getVideoThumbnail(),
-        builder: (context, snapshot) {
-          if (snapshot.hasData && snapshot.data != null) {
-            return Stack(
+        ),
+      );
+    }
+    
+    // No cached thumbnail, load it
+    return FutureBuilder<Uint8List?>(
+      future: _getVideoThumbnail(),
+      builder: (context, snapshot) {
+        if (snapshot.hasData && snapshot.data != null) {
+          return GestureDetector(
+            onTap: () {
+              // Initialize and play video when tapped
+              if (_videoController == null || !_videoController!.value.isInitialized) {
+                _initVideoPlayer().then((_) {
+                  if (_videoController != null && _videoController!.value.isInitialized && mounted) {
+                    _videoController!.play();
+                    setState(() {});
+                  }
+                });
+              } else {
+                _videoController!.play();
+                setState(() {});
+              }
+            },
+            child: Stack(
               fit: StackFit.expand,
               children: [
-                Image.memory(
-                  snapshot.data!,
-                  fit: BoxFit.cover,
+                Center(
+                  child: SizedBox(
+                    width: videoWidth,
+                    height: videoHeight,
+                    child: Image.memory(
+                      snapshot.data!,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
                 ),
-                const Center(
-                  child: CircularProgressIndicator(),
-                ),
+                if (_isVideoInitializing)
+                  const Center(
+                    child: CircularProgressIndicator(),
+                  ),
                 const Center(
                   child: Icon(
                     Icons.play_circle_filled,
-                    size: 64,
-                    color: Colors.white70,
+                    size: 80,
+                    color: Colors.white,
                   ),
                 ),
-              ],
-            );
-          }
-          return const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Icon(Icons.videocam, size: 64, color: Colors.white70),
               ],
             ),
           );
-        },
-      );
-    }
-
-    return GestureDetector(
-      onTap: () {
-        if (_videoController!.value.isPlaying) {
-          _videoController!.pause();
-        } else {
-          _videoController!.play();
         }
+        return const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Icon(Icons.videocam, size: 64, color: Colors.white70),
+            ],
+          ),
+        );
       },
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final videoAspectRatio = _videoController!.value.aspectRatio;
-              final containerAspectRatio = constraints.maxWidth / constraints.maxHeight;
-              
-              double videoWidth;
-              double videoHeight;
-              
-              if (videoAspectRatio > containerAspectRatio) {
-                // Video is wider - fit to width
-                videoWidth = constraints.maxWidth;
-                videoHeight = videoWidth / videoAspectRatio;
-              } else {
-                // Video is taller - fit to height
-                videoHeight = constraints.maxHeight;
-                videoWidth = videoHeight * videoAspectRatio;
-              }
-              
-              return Center(
-                child: SizedBox(
-                  width: videoWidth,
-                  height: videoHeight,
-                  child: VideoPlayer(_videoController!),
-                ),
-              );
-            },
-          ),
-          if (!_videoController!.value.isPlaying)
-            const Center(
-              child: Icon(
-                Icons.play_circle_filled,
-                size: 64,
-                color: Colors.white70,
-              ),
-            ),
-          // Mute/unmute toggle button
-          Positioned(
-            bottom: 16,
-            right: 16,
-            child: Material(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(24),
-              child: InkWell(
-                onTap: () async {
-                  final newMuted = await VideoSettingsService.toggleMute();
-                  if (_videoController != null) {
-                    _videoController!.setVolume(newMuted ? 0.0 : 1.0);
-                    setState(() {
-                      _isMuted = newMuted;
-                    });
-                  }
-                },
-                borderRadius: BorderRadius.circular(24),
-                child: Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: Icon(
-                    _isMuted ? Icons.volume_off : Icons.volume_up,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -609,118 +647,96 @@ class _SwipeCardState extends State<SwipeCard> {
     return null;
   }
 
-  Widget _buildImageWidgetWithCache() {
-    // Determine fit based on aspect ratio
+  Widget _buildImageWidgetWithCache(BoxConstraints constraints) {
+    // Calculate aspect ratio
+    final aspectRatio = widget.mediaItem.width / widget.mediaItem.height;
     final isLandscape = widget.mediaItem.width > widget.mediaItem.height;
-    final fit = isLandscape ? BoxFit.cover : BoxFit.contain;
+    
+    // Calculate dimensions: landscape fills width, portrait fills height
+    double imageWidth;
+    double imageHeight;
+    
+    if (isLandscape) {
+      // Landscape: fill width, calculate height
+      imageWidth = constraints.maxWidth;
+      imageHeight = imageWidth / aspectRatio;
+    } else {
+      // Portrait: fill height, calculate width
+      imageHeight = constraints.maxHeight;
+      imageWidth = imageHeight * aspectRatio;
+    }
     
     // Use cached thumbnail if available for instant display
     final cachedThumb = widget.cachedThumbnail;
     
     if (cachedThumb != null) {
-      // Show cached thumbnail immediately while loading full image
-      return FutureBuilder<Widget>(
-        future: _buildImageWidget(cachedThumb: cachedThumb, fit: fit),
-        builder: (context, snapshot) {
-          // Show cached thumbnail immediately with proper fit
-          // When full image loads, it will replace the thumbnail
-          if (snapshot.hasData) {
-            return snapshot.data!;
-          }
-          // Show cached thumbnail while loading
-          return Center(
+      // Show cached thumbnail with proper aspect ratio
+      return RepaintBoundary(
+        child: Center(
+          child: SizedBox(
+            width: imageWidth,
+            height: imageHeight,
             child: Image.memory(
               cachedThumb,
-              fit: fit,
+              fit: BoxFit.contain,
             ),
-          );
-        },
+          ),
+        ),
       );
     }
     
     // No cached thumbnail, load it
-    return FutureBuilder<Widget>(
-      future: _buildImageWidget(fit: fit),
+    return FutureBuilder<Uint8List?>(
+      future: _loadImageThumbnail(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
-        return snapshot.data ?? const Center(child: Icon(Icons.image));
+        if (snapshot.hasData && snapshot.data != null) {
+          return RepaintBoundary(
+            child: Center(
+              child: SizedBox(
+                width: imageWidth,
+                height: imageHeight,
+                child: Image.memory(
+                  snapshot.data!,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+          );
+        }
+        return const Center(child: Icon(Icons.image));
       },
     );
   }
 
-  Future<Widget> _buildImageWidget({Uint8List? cachedThumb, required BoxFit fit}) async {
+  Future<Uint8List?> _loadImageThumbnail() async {
     try {
       final asset = await AssetEntity.fromId(widget.mediaItem.id);
-      if (asset == null) {
-        return const Center(child: Icon(Icons.image, size: 100));
+      if (asset == null) return null;
+      
+      // Generate thumbnail maintaining aspect ratio
+      // Use max dimension of 800, but maintain aspect ratio
+      int thumbWidth;
+      int thumbHeight;
+      
+      if (widget.mediaItem.width > widget.mediaItem.height) {
+        // Landscape: width is larger
+        thumbWidth = 800;
+        thumbHeight = (800 * widget.mediaItem.height / widget.mediaItem.width).round();
+      } else {
+        // Portrait: height is larger
+        thumbHeight = 800;
+        thumbWidth = (800 * widget.mediaItem.width / widget.mediaItem.height).round();
       }
       
-      // Use cached thumbnail if provided, otherwise load it
-      Uint8List? thumbnail = cachedThumb;
-      if (thumbnail == null) {
-        thumbnail = await asset.thumbnailDataWithSize(
-          const ThumbnailSize(1200, 1200), // Higher quality thumbnail
-        );
-      }
-      
-      // Then get the full file
-      final file = await asset.file;
-      if (file == null) {
-        // If no file, try to show thumbnail if available
-        if (thumbnail != null) {
-          return Center(
-            child: Image.memory(
-              thumbnail,
-              fit: fit,
-            ),
-          );
-        }
-        return const Center(child: Icon(Icons.image, size: 100));
-      }
-      
-      // If we have a thumbnail, show it as background while full image loads on top
-      if (thumbnail != null) {
-        return Center(
-          child: Image.file(
-            file,
-            fit: fit,
-            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-              // Show full image when frame is available, otherwise show thumbnail
-              if (wasSynchronouslyLoaded || frame != null) {
-                return child;
-              }
-              // Show thumbnail while loading
-              return Image.memory(
-                thumbnail!,
-                fit: fit,
-              );
-            },
-            errorBuilder: (context, error, stackTrace) {
-              // Fallback to thumbnail if full image fails
-              return Image.memory(
-                thumbnail!,
-                fit: fit,
-              );
-            },
-          ),
-        );
-      }
-      
-      // Fallback to direct file if no thumbnail available
-      return Center(
-        child: Image.file(
-          file,
-          fit: fit,
-          errorBuilder: (context, error, stackTrace) {
-            return const Center(child: Icon(Icons.image, size: 100));
-          },
-        ),
+      return await asset.thumbnailDataWithSize(
+        ThumbnailSize(thumbWidth, thumbHeight),
       );
     } catch (e) {
-      print('Error building image widget: $e');
-      return const Center(child: Icon(Icons.image, size: 100));
+      print('Error loading image thumbnail: $e');
+      return null;
     }
   }
 }

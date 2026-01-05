@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../models/media_item.dart';
 import '../utils/date_utils.dart';
@@ -21,13 +22,13 @@ class SwipeScreen extends StatefulWidget {
 }
 
 class _SwipeScreenState extends State<SwipeScreen> {
-  int _currentIndex = 0;
   final List<MediaItem> _mediaToDelete = [];
-  final ValueNotifier<double> _dragOffsetNotifier = ValueNotifier<double>(0.0);
+  final CardSwiperController _swiperController = CardSwiperController();
   // In-memory cache for video thumbnails (session only, cleared on dispose)
   final Map<String, Uint8List> _videoThumbnailCache = {};
   // In-memory cache for image thumbnails (session only, cleared on dispose)
   final Map<String, Uint8List> _imageThumbnailCache = {};
+  int _currentIndex = 0;
 
   @override
   void initState() {
@@ -52,7 +53,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
     // Clear the cache when screen is disposed
     _videoThumbnailCache.clear();
     _imageThumbnailCache.clear();
-    _dragOffsetNotifier.dispose();
+    _swiperController.dispose();
     super.dispose();
   }
   
@@ -93,15 +94,33 @@ class _SwipeScreenState extends State<SwipeScreen> {
       final asset = await AssetEntity.fromId(mediaId);
       if (asset == null) return;
       
+      // Find the media item to get its dimensions
+      final mediaItem = widget.media.firstWhere((item) => item.id == mediaId);
+      
+      // Generate thumbnail maintaining aspect ratio
+      // Use max dimension of 800, but maintain aspect ratio
+      int thumbWidth;
+      int thumbHeight;
+      
+      if (mediaItem.width > mediaItem.height) {
+        // Landscape: width is larger
+        thumbWidth = 800;
+        thumbHeight = (800 * mediaItem.height / mediaItem.width).round();
+      } else {
+        // Portrait: height is larger
+        thumbHeight = 800;
+        thumbWidth = (800 * mediaItem.width / mediaItem.height).round();
+      }
+      
       final thumbnail = await asset.thumbnailDataWithSize(
-        const ThumbnailSize(1200, 1200), // Higher quality for better display
+        ThumbnailSize(thumbWidth, thumbHeight),
       );
       
       if (thumbnail != null && mounted) {
         setState(() {
           _imageThumbnailCache[mediaId] = thumbnail;
         });
-        print('Cached thumbnail for image: $mediaId');
+        print('Cached thumbnail for image: $mediaId (${thumbWidth}x${thumbHeight})');
       }
     } catch (e) {
       print('Error preloading image thumbnail for $mediaId: $e');
@@ -152,42 +171,55 @@ class _SwipeScreenState extends State<SwipeScreen> {
     }
   }
 
-  void _handleSwipe(String direction) {
-    final currentMedia = widget.media[_currentIndex];
-
-    if (direction == 'left') {
+  Future<bool> _onSwipe(int previousIndex, int? currentIndex, CardSwiperDirection direction) async {
+    final swipedMedia = widget.media[previousIndex];
+    
+    // Determine swipe direction
+    if (direction == CardSwiperDirection.left) {
       // Swipe left = delete
-      _mediaToDelete.add(currentMedia);
+      _mediaToDelete.add(swipedMedia);
     }
     // Swipe right = keep (do nothing)
+    
+    // Update current index
+    final newIndex = currentIndex ?? (previousIndex + 1);
+    setState(() {
+      _currentIndex = newIndex;
+    });
+    
+    // Preload next item in background
+    if (newIndex < widget.media.length) {
+      _preloadNextItem(newIndex);
+    }
+    
+    return true; // Allow the swipe
+  }
 
-    if (_currentIndex < widget.media.length - 1) {
-      final nextIndex = _currentIndex + 1;
-      // Preload next item in background
-      _preloadNextItem(nextIndex);
-      
-      _dragOffsetNotifier.value = 0.0;
-      setState(() {
-        _currentIndex++;
-      });
+  void _onEnd() {
+    // All cards swiped
+    if (_mediaToDelete.isEmpty) {
+      // No items to delete, go to home screen
+      Navigator.of(context).pushReplacementNamed('/home');
     } else {
-      // All cards swiped
-      if (_mediaToDelete.isEmpty) {
-        // No items to delete, go to home screen
-        Navigator.of(context).pushReplacementNamed('/home');
-      } else {
-        // Navigate to deletion confirmation
-        Navigator.of(context).pushReplacementNamed(
-          '/deletion-confirmation',
-          arguments: _mediaToDelete,
-        );
-      }
+      // Navigate to deletion confirmation
+      Navigator.of(context).pushReplacementNamed(
+        '/deletion-confirmation',
+        arguments: _mediaToDelete,
+      );
+    }
+  }
+
+  void _handleButtonSwipe(String direction) {
+    if (direction == 'left') {
+      _swiperController.swipe(CardSwiperDirection.left);
+    } else if (direction == 'right') {
+      _swiperController.swipe(CardSwiperDirection.right);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_currentIndex >= widget.media.length) {
+    if (widget.media.isEmpty) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
@@ -201,7 +233,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
 
     return Scaffold(
       body: Column(
-          children: [
+        children: [
           LogoWidget(
             onTap: () => Navigator.of(context).pushReplacementNamed('/home'),
           ),
@@ -225,48 +257,60 @@ class _SwipeScreenState extends State<SwipeScreen> {
             ),
           ),
           Expanded(
-            child: Center(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onPanUpdate: (details) {
-                  final currentOffset = _dragOffsetNotifier.value;
-                  final newOffset = (currentOffset + details.delta.dx).clamp(-500.0, 500.0);
-                  _dragOffsetNotifier.value = newOffset;
-                },
-                onPanEnd: (details) {
-                  const threshold = 100.0;
-                  final offset = _dragOffsetNotifier.value;
-                  if (offset.abs() > threshold) {
-                    _handleSwipe(offset > 0 ? 'right' : 'left');
-                  } else {
-                    _dragOffsetNotifier.value = 0.0;
-                  }
-                },
-                child: ValueListenableBuilder<double>(
-                  valueListenable: _dragOffsetNotifier,
-                  builder: (context, dragOffset, child) {
-                    return RepaintBoundary(
-                      child: Transform.translate(
-                        offset: Offset(dragOffset, 0),
-                        child: Transform.rotate(
-                          angle: dragOffset * 0.001,
-                          child: SizedBox(
-                            width: MediaQuery.of(context).size.width - 40,
-                            height: MediaQuery.of(context).size.height * 0.6,
-                            child: SwipeCard(
-                              key: ValueKey(currentMedia.id),
-                              mediaItem: currentMedia,
-                              cachedThumbnail: currentMedia.isVideo 
-                                  ? _videoThumbnailCache[currentMedia.id]
-                                  : _imageThumbnailCache[currentMedia.id],
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
+            child: CardSwiper(
+              controller: _swiperController,
+              cardsCount: widget.media.length,
+              allowedSwipeDirection: const AllowedSwipeDirection.only(
+                left: true,
+                right: true,
               ),
+              threshold: 50,
+              maxAngle: 30,
+              duration: const Duration(milliseconds: 200),
+              scale: 0.9,
+              numberOfCardsDisplayed: 2,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 25),
+              onSwipe: _onSwipe,
+              onEnd: _onEnd,
+              cardBuilder: (context, index, percentThresholdX, percentThresholdY) {
+                if (index >= widget.media.length) {
+                  return const SizedBox.shrink();
+                }
+                
+                final mediaItem = widget.media[index];
+                // Calculate aspect ratio
+                final aspectRatio = mediaItem.width / mediaItem.height;
+                final maxWidth = MediaQuery.of(context).size.width - 40;
+                final maxHeight = MediaQuery.of(context).size.height * 0.6;
+                
+                // Calculate actual dimensions maintaining aspect ratio
+                double cardWidth;
+                double cardHeight;
+                
+                if (aspectRatio > maxWidth / maxHeight) {
+                  // Media is wider - fit to width
+                  cardWidth = maxWidth;
+                  cardHeight = cardWidth / aspectRatio;
+                } else {
+                  // Media is taller - fit to height
+                  cardHeight = maxHeight;
+                  cardWidth = cardHeight * aspectRatio;
+                }
+                
+                return Center(
+                  child: SizedBox(
+                    width: cardWidth,
+                    height: cardHeight,
+                    child: SwipeCard(
+                      key: ValueKey(mediaItem.id),
+                      mediaItem: mediaItem,
+                      cachedThumbnail: mediaItem.isVideo 
+                          ? _videoThumbnailCache[mediaItem.id]
+                          : _imageThumbnailCache[mediaItem.id],
+                    ),
+                  ),
+                );
+              },
             ),
           ),
           Padding(
@@ -275,7 +319,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 ElevatedButton(
-                  onPressed: () => _handleSwipe('left'),
+                  onPressed: () => _handleButtonSwipe('left'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.red,
                     padding: const EdgeInsets.symmetric(
@@ -286,7 +330,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
                   child: const Text('❌ Delete', style: TextStyle(fontSize: 18)),
                 ),
                 ElevatedButton(
-                  onPressed: () => _handleSwipe('right'),
+                  onPressed: () => _handleButtonSwipe('right'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
                     padding: const EdgeInsets.symmetric(
@@ -311,4 +355,3 @@ class _SwipeScreenState extends State<SwipeScreen> {
     );
   }
 }
-
