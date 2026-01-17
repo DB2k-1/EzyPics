@@ -507,33 +507,57 @@ class _SwipeCardState extends State<SwipeCard> {
                   color: Colors.white70,
                 ),
               ),
-            // Mute/unmute toggle button
+            // Control buttons in bottom right
             Positioned(
               bottom: 16,
               right: 16,
-              child: Material(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(24),
-                child: InkWell(
-                  onTap: () async {
-                    final newMuted = await VideoSettingsService.toggleMute();
-                    if (_videoController != null) {
-                      _videoController!.setVolume(newMuted ? 0.0 : 1.0);
-                      setState(() {
-                        _isMuted = newMuted;
-                      });
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(24),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Icon(
-                      _isMuted ? Icons.volume_off : Icons.volume_up,
-                      color: Colors.white,
-                      size: 24,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Fullscreen button
+                  Material(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(24),
+                    child: InkWell(
+                      onTap: () => _showFullscreenVideo(context),
+                      borderRadius: BorderRadius.circular(24),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: const Icon(
+                          Icons.fullscreen,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  // Mute/unmute toggle button
+                  Material(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(24),
+                    child: InkWell(
+                      onTap: () async {
+                        final newMuted = await VideoSettingsService.toggleMute();
+                        if (_videoController != null) {
+                          _videoController!.setVolume(newMuted ? 0.0 : 1.0);
+                          setState(() {
+                            _isMuted = newMuted;
+                          });
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(24),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Icon(
+                          _isMuted ? Icons.volume_off : Icons.volume_up,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
