@@ -350,7 +350,23 @@ class _SwipeCardState extends State<SwipeCard> {
 
   @override
   void dispose() {
-    _videoController?.dispose();
+    // Dispose video controller asynchronously to avoid blocking the UI thread
+    final controller = _videoController;
+    if (controller != null) {
+      // Pause first to stop any ongoing operations
+      if (controller.value.isInitialized) {
+        controller.pause();
+      }
+      // Dispose asynchronously to avoid blocking
+      Future.microtask(() {
+        try {
+          controller.dispose();
+        } catch (e) {
+          print('Error disposing video controller: $e');
+        }
+      });
+      _videoController = null;
+    }
     super.dispose();
   }
 
@@ -635,11 +651,12 @@ class _SwipeCardState extends State<SwipeCard> {
 
   Future<Uint8List?> _getVideoThumbnail() async {
     try {
-      final asset = await AssetEntity.fromId(widget.mediaItem.id);
+      final asset = await AssetEntity.fromId(widget.mediaItem.id)
+          .timeout(const Duration(seconds: 5), onTimeout: () => null);
       if (asset != null) {
         return await asset.thumbnailDataWithSize(
           ThumbnailSize(widget.mediaItem.width, widget.mediaItem.height),
-        );
+        ).timeout(const Duration(seconds: 5), onTimeout: () => null);
       }
     } catch (e) {
       print('Error getting video thumbnail: $e');
@@ -713,7 +730,8 @@ class _SwipeCardState extends State<SwipeCard> {
 
   Future<Uint8List?> _loadImageThumbnail() async {
     try {
-      final asset = await AssetEntity.fromId(widget.mediaItem.id);
+      final asset = await AssetEntity.fromId(widget.mediaItem.id)
+          .timeout(const Duration(seconds: 5), onTimeout: () => null);
       if (asset == null) return null;
       
       // Generate thumbnail maintaining aspect ratio
@@ -733,7 +751,7 @@ class _SwipeCardState extends State<SwipeCard> {
       
       return await asset.thumbnailDataWithSize(
         ThumbnailSize(thumbWidth, thumbHeight),
-      );
+      ).timeout(const Duration(seconds: 5), onTimeout: () => null);
     } catch (e) {
       print('Error loading image thumbnail: $e');
       return null;

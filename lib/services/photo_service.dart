@@ -36,14 +36,25 @@ class PhotoService {
       final assetCount = await album.assetCountAsync;
       print('PhotoService: Album has $assetCount assets');
       
-      // Fetch assets in batches
-      const batchSize = 500;
+      // Fetch assets in smaller batches to avoid blocking
+      const batchSize = 200; // Reduced from 500 to prevent ANR
       int totalProcessed = 0;
       for (int start = 0; start < assetCount && start < 50000; start += batchSize) {
         final end = (start + batchSize < assetCount) ? start + batchSize : assetCount;
         print('PhotoService: Fetching assets $start to $end');
-        final assets = await album.getAssetListRange(start: start, end: end);
+        
+        // Add timeout to prevent hangs
+        final assets = await album.getAssetListRange(start: start, end: end)
+            .timeout(const Duration(seconds: 10), onTimeout: () {
+          print('PhotoService: Timeout fetching assets $start to $end');
+          return <AssetEntity>[];
+        });
         print('PhotoService: Got ${assets.length} assets in this batch');
+        
+        // Small delay between batches to keep UI responsive
+        if (start + batchSize < assetCount && start + batchSize < 50000) {
+          await Future.delayed(const Duration(milliseconds: 10));
+        }
 
         // Group by date
         int videoCount = 0;

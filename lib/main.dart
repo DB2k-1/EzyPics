@@ -31,6 +31,9 @@ class EzyPicsApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
+      // Enable performance overlay in debug mode (toggle with 'P' key or set to true)
+      // Set showPerformanceOverlay: true to always show it
+      showPerformanceOverlay: false, // Set to true to debug performance issues
       initialRoute: '/',
       routes: {
         '/': (context) => const InitialScreen(),
