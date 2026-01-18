@@ -35,29 +35,48 @@ class EzyPicsApp extends StatelessWidget {
       // Set showPerformanceOverlay: true to always show it
       showPerformanceOverlay: false, // Set to true to debug performance issues
       initialRoute: '/',
-      routes: {
-        '/': (context) => const InitialScreen(),
-        '/home': (context) => const HomeScreen(),
-        '/carousel': (context) => const CarouselScreen(),
-        '/swipe': (context) {
-          final args = ModalRoute.of(context)!.settings.arguments as Map;
-          final media = args['media'] as List<MediaItem>;
-          final videos = media.where((m) => m.isVideo).toList();
-          final photos = media.where((m) => !m.isVideo).toList();
-          print('Main: SwipeScreen route - ${photos.length} photos, ${videos.length} videos');
-          for (final item in media) {
-            print('Main: Media item - isVideo: ${item.isVideo}, ID: ${item.id}');
-          }
-          return SwipeScreen(
-            dateKey: args['dateKey'] as String,
-            media: media,
-          );
-        },
-        '/deletion-confirmation': (context) {
-          final args = ModalRoute.of(context)!.settings.arguments as List<MediaItem>;
-          return DeletionConfirmationScreen(mediaToDelete: args);
-        },
-        '/settings': (context) => const SettingsScreen(),
+      // Custom route generator with instant transitions (no slide-in animation)
+      onGenerateRoute: (settings) {
+        WidgetBuilder? builder;
+        
+        switch (settings.name) {
+          case '/':
+            builder = (context) => const InitialScreen();
+            break;
+          case '/home':
+            builder = (context) => const HomeScreen();
+            break;
+          case '/carousel':
+            builder = (context) => const CarouselScreen();
+            break;
+          case '/swipe':
+            final args = settings.arguments as Map;
+            final media = args['media'] as List<MediaItem>;
+            builder = (context) => SwipeScreen(
+              dateKey: args['dateKey'] as String,
+              media: media,
+            );
+            break;
+          case '/deletion-confirmation':
+            final args = settings.arguments as List<MediaItem>;
+            builder = (context) => DeletionConfirmationScreen(mediaToDelete: args);
+            break;
+          case '/settings':
+            builder = (context) => const SettingsScreen();
+            break;
+        }
+        
+        if (builder == null) {
+          return null;
+        }
+        
+        // Instant transition - no animation
+        return PageRouteBuilder(
+          settings: settings,
+          pageBuilder: (context, animation, secondaryAnimation) => builder!(context),
+          transitionDuration: Duration.zero,
+          reverseTransitionDuration: Duration.zero,
+        );
       },
     );
   }
