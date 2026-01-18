@@ -558,7 +558,7 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
   }
 
   Future<void> _handleShare(MediaItem mediaItem) async {
-    // Show loading dialog
+    // Show loading dialog immediately
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -598,7 +598,12 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
       },
     );
 
+    // Wait for dialog to render before starting branding
+    await Future.delayed(Duration.zero);
+    await WidgetsBinding.instance.endOfFrame;
+
     try {
+      // Now start the branding and sharing process
       await ShareService.shareMedia(mediaItem);
     } finally {
       // Hide loading dialog

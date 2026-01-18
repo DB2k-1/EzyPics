@@ -7,7 +7,7 @@ import 'image_branding_service.dart';
 import '../models/media_item.dart';
 
 class ShareService {
-  static const String iosAppStoreUrl = 'https://apps.apple.com/us/app/ezypics/id6757226178';
+  static const String iosAppStoreUrl = 'itms-apps://itunes.apple.com/app/id6757226178';
 
   /// Shares media (image with branding, or video without branding)
   /// For iOS, sharePositionOrigin is required - pass the position of the share button
