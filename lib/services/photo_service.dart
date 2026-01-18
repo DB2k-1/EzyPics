@@ -16,40 +16,31 @@ class PhotoService {
     final mediaMap = <String, List<MediaItem>>{};
     
     try {
-      print('PhotoService: Requesting asset path list...');
       // Get all albums
       final albums = await PhotoManager.getAssetPathList(
         type: RequestType.all,
         hasAll: true,
       );
-      
-      print('PhotoService: Found ${albums.length} albums');
 
       if (albums.isEmpty) {
-        print('PhotoService: No albums found');
         return mediaMap;
       }
 
       // Use the first album (usually "Recent" or main album)
       final album = albums.first;
-      print('PhotoService: Using album: ${album.name}');
       final assetCount = await album.assetCountAsync;
-      print('PhotoService: Album has $assetCount assets');
       
       // Fetch assets in smaller batches to avoid blocking
       const batchSize = 200; // Reduced from 500 to prevent ANR
       int totalProcessed = 0;
       for (int start = 0; start < assetCount && start < 50000; start += batchSize) {
         final end = (start + batchSize < assetCount) ? start + batchSize : assetCount;
-        print('PhotoService: Fetching assets $start to $end');
         
         // Add timeout to prevent hangs
         final assets = await album.getAssetListRange(start: start, end: end)
             .timeout(const Duration(seconds: 10), onTimeout: () {
-          print('PhotoService: Timeout fetching assets $start to $end');
           return <AssetEntity>[];
         });
-        print('PhotoService: Got ${assets.length} assets in this batch');
         
         // Small delay between batches to keep UI responsive
         if (start + batchSize < assetCount && start + batchSize < 50000) {
@@ -75,13 +66,6 @@ class PhotoService {
             );
 
             final dateKey = mediaItem.dateKey;
-            final dateStr = '${asset.createDateTime!.month.toString().padLeft(2, '0')}-${asset.createDateTime!.day.toString().padLeft(2, '0')}';
-            
-            // Debug logging for videos
-            if (isVideo) {
-              print('PhotoService: VIDEO detected - ID: ${asset.id}, Date: ${asset.createDateTime}, DateKey: $dateKey, DateStr: $dateStr');
-              print('PhotoService: Created MediaItem with isVideo=${mediaItem.isVideo}');
-            }
             
             // Verify MediaItem isVideo flag matches
             if (isVideo != mediaItem.isVideo) {
@@ -91,31 +75,13 @@ class PhotoService {
             mediaMap.putIfAbsent(dateKey, () => []);
             mediaMap[dateKey]!.add(mediaItem);
             totalProcessed++;
-          } else {
-            // Log assets without creation date
-            print('PhotoService: Asset ${asset.id} has no createDateTime, type: ${asset.type}');
           }
         }
-        print('PhotoService: Batch contains $photoCount photos, $videoCount videos');
       }
-      print('PhotoService: Processed $totalProcessed assets total');
 
       // Sort each date's media by creation time (newest first)
       for (final key in mediaMap.keys) {
         mediaMap[key]!.sort((a, b) => b.creationTime.compareTo(a.creationTime));
-      }
-      
-      print('PhotoService: Media grouped by dates: ${mediaMap.keys.toList()}');
-      for (final key in mediaMap.keys) {
-        final items = mediaMap[key]!;
-        final videos = items.where((item) => item.isVideo).toList();
-        final photos = items.where((item) => !item.isVideo).toList();
-        print('PhotoService: Date $key has ${items.length} items (${photos.length} photos, ${videos.length} videos)');
-        
-        // Log details for each video
-        for (final video in videos) {
-          print('PhotoService:   VIDEO on $key - ID: ${video.id}, Date: ${video.creationTime}, Year: ${video.year}');
-        }
       }
     } catch (e) {
       print('Error scanning media: $e');

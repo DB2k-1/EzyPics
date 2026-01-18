@@ -47,11 +47,6 @@ class YearPreviewCard extends StatelessWidget {
                 ? (animValue - 0.85) / 0.15 // Fade in white during fade out
                 : 0.0; // No white overlay during full opacity
         
-        // Debug logging (remove after testing)
-        if (animValue % 0.1 < 0.02 || animValue == 0.0 || animValue == 1.0) {
-          print('[PREVIEW] Year $year: animValue=${animValue.toStringAsFixed(3)}, cardOpacity=${opacityValue.toStringAsFixed(3)}, whiteOpacity=${whiteOverlayOpacity.toStringAsFixed(3)}');
-        }
-
         return LayoutBuilder(
           builder: (context, constraints) {
             final cardWidth = constraints.maxWidth - 32; // Account for horizontal margin

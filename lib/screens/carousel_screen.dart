@@ -60,7 +60,6 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
       if (args != null && args is Map && args['dateKey'] != null) {
         _selectedDateKey = args['dateKey'] as String;
       }
-      print('CarouselScreen initialized with dateKey: $_selectedDateKey');
       _galleryStarted = false;
       _navigationTriggered = false;
       _currentYearIndex = 0;
@@ -84,13 +83,11 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     PerformanceLogger.start('scan_library');
     setState(() => _isScanning = true);
     try {
-      print('Starting media scan...');
       final scannedMedia = await PhotoService.scanMediaByDate()
           .timeout(const Duration(seconds: 30), onTimeout: () {
         PerformanceLogger.log('scan_library timeout after 30s', level: 'error');
         return <String, List<MediaItem>>{};
       });
-      print('Media scan complete. Found ${scannedMedia.length} dates with media.');
       PerformanceLogger.end('scan_library', threshold: const Duration(seconds: 5));
       if (mounted) {
         setState(() {
@@ -114,7 +111,6 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
 
   void _startGalleryAnimation() {
     if (_galleryStarted) {
-      print('Gallery already started, skipping');
       return;
     }
     
@@ -123,13 +119,9 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     _navigationTriggered = false;
     _galleryStarted = true;
 
-    print('Gallery: Available dates in mediaMap: ${_mediaMap.keys.toList()}');
-    print('Gallery: Looking for dateKey: $_selectedDateKey');
     final mediaForDate = _mediaMap[_selectedDateKey] ?? [];
-    print('Starting gallery animation. Media for date $_selectedDateKey: ${mediaForDate.length} items');
     
     if (mediaForDate.isEmpty) {
-      print('No media found for date $_selectedDateKey');
       return;
     }
 
@@ -139,7 +131,6 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
   Future<void> _preloadThumbnails(Map<int, List<MediaItem>> mediaByYear, List<int> years) async {
     PerformanceLogger.start('preload_preview_thumbnails');
     setState(() => _thumbnailsLoading = true);
-    print('Pre-loading thumbnails for ${years.length} years...');
     
     final thumbnailCache = <int, Uint8List?>{};
     
@@ -151,7 +142,6 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
         final asset = await AssetEntity.fromId(firstItem.id)
             .timeout(const Duration(seconds: 5), onTimeout: () => null);
         if (asset == null) {
-          print('Asset is null for year $year');
           PerformanceLogger.end('load_thumbnail_year_$year');
           return MapEntry(year, null as Uint8List?);
         }
@@ -161,7 +151,6 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
           const ThumbnailSize(300, 300),
         ).timeout(const Duration(seconds: 5), onTimeout: () => null);
         PerformanceLogger.end('load_thumbnail_year_$year', threshold: const Duration(milliseconds: 500));
-        print('Loaded thumbnail for year $year: ${thumbnail != null ? 'success' : 'failed'}');
         return MapEntry(year, thumbnail);
       } catch (e) {
         PerformanceLogger.log('Error loading thumbnail for year $year: $e', level: 'error');
@@ -182,33 +171,16 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
         _thumbnailCache = thumbnailCache;
         _thumbnailsLoading = false;
       });
-      print('Thumbnail pre-loading complete. Starting animation...');
       _startAnimationAfterPreload(years);
     }
   }
 
   void _startGalleryWithMedia(List<MediaItem> mediaForDate) {
-    print('_startGalleryWithMedia: Total media items: ${mediaForDate.length}');
-    if (mediaForDate.isNotEmpty) {
-      print('  First item: year=${mediaForDate.first.year}, id=${mediaForDate.first.id}');
-      print('  Last item: year=${mediaForDate.last.year}, id=${mediaForDate.last.id}');
-    }
-    
     final mediaByYear = <int, List<MediaItem>>{};
     for (final item in mediaForDate) {
       mediaByYear.putIfAbsent(item.year, () => []).add(item);
     }
     final years = mediaByYear.keys.toList()..sort((a, b) => b.compareTo(a));
-    print('Years found: $years (${years.length} years)');
-    
-    for (final year in years) {
-      final items = mediaByYear[year]!;
-      print('  Year $year: ${items.length} items');
-      if (items.isNotEmpty) {
-        print('    First: id=${items.first.id}');
-        print('    Last: id=${items.last.id}');
-      }
-    }
 
     // Store years and media
     setState(() {
@@ -218,11 +190,9 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     });
 
     if (years.isEmpty) {
-      print('No years found, cannot start gallery');
       return;
     }
     
-    print('Pre-loading thumbnails before starting gallery preview...');
     _preloadThumbnails(mediaByYear, years);
   }
 
@@ -248,13 +218,10 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
       _currentYearIndex = 0;
     });
 
-    print('Starting gallery preview with ${years.length} years');
-    
     // Start first card animation
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _navigationTriggered) return;
       
-      print('Fading in first year: ${years[0]}');
       controller.forward();
       
       if (years.length > 1) {
@@ -278,11 +245,6 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
   
   void _preloadSwipeContentEarly(List<MediaItem> media) {
     // Start preloading in background immediately
-    print('_preloadSwipeContentEarly: Setting _reviewMedia with ${media.length} items');
-    if (media.isNotEmpty) {
-      print('  First item: year=${media.first.year}, id=${media.first.id}');
-      print('  Last item: year=${media.last.year}, id=${media.last.id}');
-    }
     _reviewMedia = media;
     _preloadVideoThumbnails(media);
     _preloadImageThumbnails(media);
@@ -292,11 +254,8 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
   void _cycleToNextYear(List<int> years, AnimationController controller) {
     if (!mounted || _navigationTriggered) return;
     
-    print('[ANIMATION] Cycling to next year. Current index: $_currentYearIndex, Total: ${years.length}');
-    
     // Check if all years shown
     if (_currentYearIndex >= years.length - 1) {
-      print('[ANIMATION] All years shown, navigating immediately');
       // Navigate immediately - we've shown all years
       if (mounted && !_navigationTriggered) {
         _navigateToSwipe();
@@ -315,7 +274,6 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _navigationTriggered) return;
       
-      print('[ANIMATION] Starting animation for year ${years[_currentYearIndex]}');
       controller.forward();
       
       // For the last year, navigate after showing it (850ms)
@@ -340,9 +298,7 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     if (_navigationTriggered) return;
     
     _navigationTriggered = true;
-    print('Transitioning to review mode - preview complete');
     final media = _mediaMap[_selectedDateKey] ?? [];
-    print('Media count for review: ${media.length}');
     
     _galleryTimer?.cancel();
     _fadeController?.stop();
@@ -354,7 +310,6 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
   }
   
   Future<void> _preloadSwipeContent(List<MediaItem> media) async {
-    print('Transitioning to review mode...');
     
     // Content should already be preloading from _preloadSwipeContentEarly
     // Just transition immediately - no delay needed
@@ -366,14 +321,12 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
         _currentIndex = 0;
         _mediaToDelete.clear();
       });
-      print('Transitioned to review mode');
     }
   }
   
   Future<void> _preloadVideoThumbnails(List<MediaItem> media) async {
     PerformanceLogger.start('preload_video_thumbnails');
     final videoItems = media.where((m) => m.isVideo).toList();
-    print('Preloading thumbnails for ${videoItems.length} videos...');
     
     // Process in smaller batches to avoid overwhelming the system
     const batchSize = 3;
@@ -396,7 +349,6 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
   Future<void> _preloadImageThumbnails(List<MediaItem> media) async {
     PerformanceLogger.start('preload_image_thumbnails');
     final imageItems = media.where((m) => !m.isVideo).toList();
-    print('Preloading thumbnails for ${imageItems.length} images...');
     
     // Process in smaller batches
     const batchSize = 3;

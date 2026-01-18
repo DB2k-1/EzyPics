@@ -350,32 +350,26 @@ class _SwipeCardState extends State<SwipeCard> {
   @override
   void initState() {
     super.initState();
-    print('SwipeCard initState: isVideo=${widget.mediaItem.isVideo}, ID=${widget.mediaItem.id}');
     // Don't auto-initialize video - wait for user to tap play button
   }
 
   Future<void> _initVideoPlayer() async {
     if (_isVideoInitializing) {
-      print('Video initialization already in progress, skipping');
       return;
     }
     
     if (_videoController != null && _videoController!.value.isInitialized) {
-      print('Video controller already initialized, skipping');
       return;
     }
     
-    print('_initVideoPlayer called for video: ${widget.mediaItem.id}');
     setState(() {
       _isVideoInitializing = true;
       _videoError = null;
     });
 
     try {
-      print('Initializing video for: ${widget.mediaItem.id}');
       final asset = await AssetEntity.fromId(widget.mediaItem.id);
       if (asset == null) {
-        print('Asset is null for video: ${widget.mediaItem.id}');
         if (mounted) {
           setState(() {
             _videoError = 'Asset not found';
@@ -386,14 +380,11 @@ class _SwipeCardState extends State<SwipeCard> {
       }
 
       if (!mounted) {
-        print('Widget not mounted after getting asset');
         return;
       }
 
-      print('Getting file for video asset...');
       final file = await asset.file;
       if (file == null) {
-        print('File is null for video: ${widget.mediaItem.id}');
         if (mounted) {
           setState(() {
             _videoError = 'File not found';
@@ -404,18 +395,11 @@ class _SwipeCardState extends State<SwipeCard> {
       }
 
       if (!mounted) {
-        print('Widget not mounted after getting file');
         return;
       }
 
-      print('Creating video controller for: ${file.path}');
-      print('File exists: ${await file.exists()}, size: ${await file.length()} bytes');
       _videoController = VideoPlayerController.file(file);
-      print('Video controller created, initializing...');
       await _videoController!.initialize();
-      print('Video controller initialized: ${_videoController!.value.isInitialized}');
-      print('Video duration: ${_videoController!.value.duration}');
-      print('Video size: ${_videoController!.value.size}');
       
       if (mounted) {
         // Load mute state and apply it
@@ -427,9 +411,7 @@ class _SwipeCardState extends State<SwipeCard> {
           _isMuted = muted;
         });
         // Don't auto-play - user must tap play button
-        print('Video controller ready, muted: $muted');
       } else {
-        print('Widget not mounted after initialization, disposing controller');
         _videoController?.dispose();
         _videoController = null;
       }
@@ -514,8 +496,6 @@ class _SwipeCardState extends State<SwipeCard> {
 
   @override
   Widget build(BuildContext context) {
-    print('SwipeCard build: isVideo=${widget.mediaItem.isVideo}, hasController=${_videoController != null}, isInitialized=${_videoController?.value.isInitialized ?? false}, isInitializing=$_isVideoInitializing');
-    
     // Don't auto-initialize video - wait for user to tap play button
     
     return RepaintBoundary(
