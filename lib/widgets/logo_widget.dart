@@ -58,26 +58,6 @@ class LogoWidget extends StatelessWidget {
               ),
             ),
           ),
-        // Date text positioned below banner (maintains same position)
-        if (showDate)
-          Positioned(
-            bottom: 0.0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: Text(
-                  AppDateUtils.formatDateForDisplay(selectedDateKey!),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );

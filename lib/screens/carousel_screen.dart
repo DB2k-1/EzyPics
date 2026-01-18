@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../models/media_item.dart';
 import '../services/photo_service.dart';
+import '../services/share_service.dart';
 import '../utils/date_utils.dart';
 import '../utils/performance_logger.dart';
 import '../widgets/logo_widget.dart';
@@ -555,6 +557,57 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     }
   }
 
+  Future<void> _handleShare(MediaItem mediaItem) async {
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black54,
+      builder: (BuildContext context) {
+        return WillPopScope(
+          onWillPop: () async => false, // Prevent dismissing by back button
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            child: Container(
+              padding: const EdgeInsets.all(30),
+              decoration: BoxDecoration(
+                color: Colors.black87,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                  SizedBox(height: 20),
+                  Text(
+                    'Sharing',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    try {
+      await ShareService.shareMedia(mediaItem);
+    } finally {
+      // Hide loading dialog
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isPreviewing = !_isReviewMode && _years.isNotEmpty && _fadeController != null && !_thumbnailsLoading;
@@ -663,9 +716,23 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              Text(
-                '${_currentIndex + 1} of ${_reviewMedia.length}',
-                style: const TextStyle(fontSize: 16),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${_currentIndex + 1} of ${_reviewMedia.length}',
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () => _handleShare(currentMedia),
+                    child: Icon(
+                      Platform.isIOS ? Icons.ios_share : Icons.share,
+                      size: 20,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

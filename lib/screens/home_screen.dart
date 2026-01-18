@@ -72,6 +72,10 @@ class _HomeScreenState extends State<HomeScreen> {
                               // Check if there's media for today's date
                               final todayKey = AppDateUtils.getTodayDateKey();
                               final mediaMap = await PhotoService.scanMediaByDate();
+                              
+                              // Check if widget is still mounted before using context
+                              if (!mounted) return;
+                              
                               final mediaForToday = mediaMap[todayKey] ?? [];
                               
                               if (mediaForToday.isEmpty) {
