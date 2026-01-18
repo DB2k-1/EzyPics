@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -91,12 +92,63 @@ class _FullscreenVideoPlayer extends StatefulWidget {
 class _FullscreenVideoPlayerState extends State<_FullscreenVideoPlayer> {
   bool _showControls = true;
   bool _isMuted = false;
+  Timer? _hideControlsTimer;
+  bool _isPlaying = false;
 
   @override
   void initState() {
     super.initState();
-    widget.controller.play();
+    _isPlaying = widget.controller.value.isPlaying;
+    widget.controller.addListener(_onVideoStateChanged);
+    if (!_isPlaying) {
+      widget.controller.play();
+      _isPlaying = true;
+    }
     _loadMuteState();
+    _startHideControlsTimer();
+  }
+
+  @override
+  void dispose() {
+    _hideControlsTimer?.cancel();
+    widget.controller.removeListener(_onVideoStateChanged);
+    super.dispose();
+  }
+
+  void _onVideoStateChanged() {
+    if (!mounted) return;
+    final isPlaying = widget.controller.value.isPlaying;
+    if (_isPlaying != isPlaying) {
+      setState(() {
+        _isPlaying = isPlaying;
+        if (isPlaying) {
+          _startHideControlsTimer(); // Auto-hide when playing
+        } else {
+          _hideControlsTimer?.cancel();
+          _showControls = true; // Show controls when paused
+        }
+      });
+    }
+  }
+
+  void _startHideControlsTimer() {
+    _hideControlsTimer?.cancel();
+    _hideControlsTimer = Timer(const Duration(seconds: 1), () {
+      if (mounted && _isPlaying) {
+        setState(() {
+          _showControls = false;
+        });
+      }
+    });
+  }
+
+  void _showControlsTemporarily() {
+    if (!_showControls) {
+      setState(() {
+        _showControls = true;
+      });
+    }
+    _startHideControlsTimer();
   }
 
   Future<void> _loadMuteState() async {
@@ -113,16 +165,27 @@ class _FullscreenVideoPlayerState extends State<_FullscreenVideoPlayer> {
     setState(() {
       _isMuted = newMuted;
     });
+    _showControlsTemporarily();
   }
 
   void _togglePlayPause() {
-    setState(() {
-      if (widget.controller.value.isPlaying) {
-        widget.controller.pause();
-      } else {
-        widget.controller.play();
-      }
-    });
+    if (_isPlaying) {
+      widget.controller.pause();
+      // Immediately update state when pausing - don't wait for listener
+      setState(() {
+        _isPlaying = false;
+        _showControls = true;
+      });
+      _hideControlsTimer?.cancel();
+    } else {
+      widget.controller.play();
+      // Immediately update state when playing - don't wait for listener
+      setState(() {
+        _isPlaying = true;
+      });
+      // Show controls temporarily then auto-hide
+      _showControlsTemporarily();
+    }
   }
 
   double _dragOffset = 0.0;
@@ -132,74 +195,96 @@ class _FullscreenVideoPlayerState extends State<_FullscreenVideoPlayer> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black.withOpacity(_isDragging ? 0.5 : 1.0),
-      body: GestureDetector(
-        onTap: () {
-          setState(() {
-            _showControls = !_showControls;
-          });
-        },
-        onVerticalDragStart: (_) {
-          setState(() {
-            _isDragging = true;
-          });
-        },
-        onVerticalDragUpdate: (details) {
-          if (details.delta.dy > 0) { // Only allow downward drag
-            setState(() {
-              _dragOffset += details.delta.dy;
-            });
-          }
-        },
-        onVerticalDragEnd: (details) {
-          if (_dragOffset > 100) { // Threshold to close
-            widget.controller.pause();
-            Navigator.of(context).pop();
-          } else {
-            setState(() {
-              _dragOffset = 0.0;
-              _isDragging = false;
-            });
-          }
-        },
+      body: SafeArea(
         child: Stack(
           children: [
-            Transform.translate(
-              offset: Offset(0, _dragOffset),
-              child: Center(
-                child: AspectRatio(
-                  aspectRatio: widget.controller.value.aspectRatio,
-                  child: VideoPlayer(widget.controller),
-                ),
-              ),
-            ),
-            if (_showControls)
-              Positioned.fill(
-                child: Container(
-                  color: Colors.black.withOpacity(0.3),
+            // Video area with drag gesture - covers full screen
+            Positioned.fill(
+              child: GestureDetector(
+                onVerticalDragStart: (_) {
+                  setState(() {
+                    _isDragging = true;
+                  });
+                },
+                onVerticalDragUpdate: (details) {
+                  if (details.delta.dy > 0) {
+                    setState(() {
+                      _dragOffset += details.delta.dy;
+                    });
+                  }
+                },
+                onVerticalDragEnd: (details) {
+                  if (_dragOffset > 100) {
+                    widget.controller.pause();
+                    Navigator.of(context).pop();
+                  } else {
+                    setState(() {
+                      _dragOffset = 0.0;
+                      _isDragging = false;
+                    });
+                  }
+                },
+                onTap: () {
+                  // Toggle play/pause when video area is tapped
+                  _togglePlayPause();
+                },
+                child: Transform.translate(
+                  offset: Offset(0, _dragOffset),
                   child: Center(
-                    child: IconButton(
-                      icon: Icon(
-                        widget.controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
-                        color: Colors.white,
-                        size: 64,
-                      ),
-                      onPressed: _togglePlayPause,
+                    child: AspectRatio(
+                      aspectRatio: widget.controller.value.aspectRatio,
+                      child: VideoPlayer(widget.controller),
                     ),
                   ),
                 ),
               ),
+            ),
+            // Controls overlay - semi-transparent background when controls are shown
+            if (_showControls)
+              Positioned.fill(
+                child: IgnorePointer(
+                  ignoring: true, // Let taps pass through to video GestureDetector
+                  child: Container(
+                    color: Colors.black.withOpacity(0.3),
+                  ),
+                ),
+              ),
+            // Play/pause button in center - only shown when controls are visible
+            if (_showControls)
+              Positioned.fill(
+                child: IgnorePointer(
+                  ignoring: false, // This button needs to receive taps
+                  child: Center(
+                    child: Material(
+                      color: Colors.transparent,
+                      child: IconButton(
+                        icon: Icon(
+                          _isPlaying ? Icons.pause : Icons.play_arrow,
+                          color: Colors.white,
+                          size: 64,
+                        ),
+                        onPressed: _togglePlayPause,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            // Top-right control buttons - ALWAYS visible, positioned last to be on top
             Positioned(
-              top: 10,
-              right: 10,
+              top: 8,
+              right: 8,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Mute/unmute button
+                  // Mute/unmute button - ALWAYS visible
                   Material(
                     color: Colors.black54,
                     borderRadius: BorderRadius.circular(24),
                     child: InkWell(
-                      onTap: _toggleMute,
+                      onTap: () {
+                        _showControlsTemporarily();
+                        _toggleMute();
+                      },
                       borderRadius: BorderRadius.circular(24),
                       child: Padding(
                         padding: const EdgeInsets.all(12.0),
@@ -212,13 +297,25 @@ class _FullscreenVideoPlayerState extends State<_FullscreenVideoPlayer> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // Close button
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white, size: 30),
-                    onPressed: () {
-                      widget.controller.pause();
-                      Navigator.of(context).pop();
-                    },
+                  // Close button - ALWAYS visible
+                  Material(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(24),
+                    child: InkWell(
+                      onTap: () {
+                        widget.controller.pause();
+                        Navigator.of(context).pop();
+                      },
+                      borderRadius: BorderRadius.circular(24),
+                      child: const Padding(
+                        padding: EdgeInsets.all(12.0),
+                        child: Icon(
+                          Icons.close,
+                          color: Colors.white,
+                          size: 30,
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),

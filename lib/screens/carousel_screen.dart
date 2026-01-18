@@ -188,6 +188,12 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
   }
 
   void _startGalleryWithMedia(List<MediaItem> mediaForDate) {
+    print('_startGalleryWithMedia: Total media items: ${mediaForDate.length}');
+    if (mediaForDate.isNotEmpty) {
+      print('  First item: year=${mediaForDate.first.year}, id=${mediaForDate.first.id}');
+      print('  Last item: year=${mediaForDate.last.year}, id=${mediaForDate.last.id}');
+    }
+    
     final mediaByYear = <int, List<MediaItem>>{};
     for (final item in mediaForDate) {
       mediaByYear.putIfAbsent(item.year, () => []).add(item);
@@ -198,6 +204,10 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     for (final year in years) {
       final items = mediaByYear[year]!;
       print('  Year $year: ${items.length} items');
+      if (items.isNotEmpty) {
+        print('    First: id=${items.first.id}');
+        print('    Last: id=${items.last.id}');
+      }
     }
 
     // Store years and media
@@ -268,6 +278,11 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
   
   void _preloadSwipeContentEarly(List<MediaItem> media) {
     // Start preloading in background immediately
+    print('_preloadSwipeContentEarly: Setting _reviewMedia with ${media.length} items');
+    if (media.isNotEmpty) {
+      print('  First item: year=${media.first.year}, id=${media.first.id}');
+      print('  Last item: year=${media.last.year}, id=${media.last.id}');
+    }
     _reviewMedia = media;
     _preloadVideoThumbnails(media);
     _preloadImageThumbnails(media);
