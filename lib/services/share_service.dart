@@ -9,11 +9,42 @@ import '../models/media_item.dart';
 class ShareService {
   static const String iosAppStoreUrl = 'itms-apps://itunes.apple.com/app/id6757226178';
 
+  /// Formats a date as "12th January 2022"
+  static String _formatDateForShare(DateTime date) {
+    const monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    
+    // Get ordinal suffix for the day
+    String getOrdinalSuffix(int day) {
+      if (day >= 11 && day <= 13) {
+        return 'th';
+      }
+      switch (day % 10) {
+        case 1:
+          return 'st';
+        case 2:
+          return 'nd';
+        case 3:
+          return 'rd';
+        default:
+          return 'th';
+      }
+    }
+    
+    final monthName = monthNames[date.month - 1];
+    final dayWithSuffix = '${date.day}${getOrdinalSuffix(date.day)}';
+    
+    return '$dayWithSuffix $monthName ${date.year}';
+  }
+
   /// Shares media (image with branding, or video without branding)
   /// For iOS, sharePositionOrigin is required - pass the position of the share button
   static Future<void> shareMedia(MediaItem mediaItem, {Rect? sharePositionOrigin}) async {
     try {
-      String shareText = '\n\nShared via EzyPics';
+      final dateText = _formatDateForShare(mediaItem.creationTime);
+      String shareText = '\n\nTaken on $dateText and shared via EzyPics';
       
       // Add iOS App Store URL for iOS only
       // Put URL on separate line with spacing to minimize rich preview prominence
