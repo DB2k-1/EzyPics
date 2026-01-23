@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'screens/permission_screen.dart';
@@ -58,8 +59,19 @@ class EzyPicsApp extends StatelessWidget {
             );
             break;
           case '/deletion-confirmation':
-            final args = settings.arguments as List<MediaItem>;
-            builder = (context) => DeletionConfirmationScreen(mediaToDelete: args);
+            // Support both Map (with caches) and List (legacy) argument formats
+            if (settings.arguments is Map) {
+              final args = settings.arguments as Map<String, dynamic>;
+              builder = (context) => DeletionConfirmationScreen(
+                mediaToDelete: args['mediaToDelete'] as List<MediaItem>,
+                videoThumbnailCache: args['videoThumbnailCache'] as Map<String, Uint8List>?,
+                imageThumbnailCache: args['imageThumbnailCache'] as Map<String, Uint8List>?,
+              );
+            } else {
+              // Legacy format - just a list of MediaItems
+              final args = settings.arguments as List<MediaItem>;
+              builder = (context) => DeletionConfirmationScreen(mediaToDelete: args);
+            }
             break;
           case '/settings':
             builder = (context) => const SettingsScreen();

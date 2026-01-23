@@ -14,7 +14,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _photosDeleted = 0;
   int _videosDeleted = 0;
   int _photoStorageBytes = 0;
@@ -24,7 +24,22 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadStats();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Reload stats when app comes to foreground
+      _loadStats();
+    }
   }
 
   Future<void> _loadStats() async {
@@ -47,8 +62,13 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Reload stats when screen becomes visible
-    _loadStats();
+    // Reload stats when screen becomes visible, but use a post-frame callback
+    // to ensure any pending writes have completed
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadStats();
+      }
+    });
   }
 
   @override

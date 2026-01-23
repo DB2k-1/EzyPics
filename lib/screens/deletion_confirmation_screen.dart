@@ -8,10 +8,14 @@ import '../widgets/logo_widget.dart';
 
 class DeletionConfirmationScreen extends StatefulWidget {
   final List<MediaItem> mediaToDelete;
+  final Map<String, Uint8List>? videoThumbnailCache;
+  final Map<String, Uint8List>? imageThumbnailCache;
 
   const DeletionConfirmationScreen({
     super.key,
     required this.mediaToDelete,
+    this.videoThumbnailCache,
+    this.imageThumbnailCache,
   });
 
   @override
@@ -95,12 +99,15 @@ class _DeletionConfirmationScreenState
         }
       }
 
+      print('DeletionConfirmationScreen: Deleting ${itemsToDelete.length} items - Photos: $photosDeleted, Videos: $videosDeleted');
+
       final success = await PhotoService.deleteMediaItems(itemsToDelete);
       setState(() => _isDeleting = false);
 
       if (context.mounted) {
         if (success) {
           // Record stats
+          print('DeletionConfirmationScreen: Recording stats - Photos: $photosDeleted, Videos: $videosDeleted');
           await StatsService.recordDeletions(
             photosDeleted: photosDeleted,
             videosDeleted: videosDeleted,
@@ -108,13 +115,22 @@ class _DeletionConfirmationScreenState
             videoStorageBytes: videoStorageBytes,
           );
           
+          // Verify the stats were recorded correctly
+          final verifyPhotos = await StatsService.getPhotosDeleted();
+          final verifyVideos = await StatsService.getVideosDeleted();
+          print('DeletionConfirmationScreen: Verified stats - Photos: $verifyPhotos, Videos: $verifyVideos');
+          
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Successfully deleted ${itemsToDelete.length} item(s)'),
             ),
           );
           // Navigate to home screen after deletion
-          Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+          // Use a small delay to ensure SharedPreferences writes are committed
+          await Future.delayed(const Duration(milliseconds: 100));
+          if (context.mounted) {
+            Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+          }
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Failed to delete items')),
@@ -125,6 +141,29 @@ class _DeletionConfirmationScreenState
   }
 
   Widget _buildThumbnail(MediaItem item) {
+    // Check if we have a cached thumbnail first
+    Uint8List? cachedThumbnail;
+    if (item.isVideo && widget.videoThumbnailCache != null) {
+      cachedThumbnail = widget.videoThumbnailCache![item.id];
+    } else if (!item.isVideo && widget.imageThumbnailCache != null) {
+      cachedThumbnail = widget.imageThumbnailCache![item.id];
+    }
+
+    // If we have a cached thumbnail, use it immediately
+    if (cachedThumbnail != null) {
+      return Image.memory(
+        cachedThumbnail,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: Colors.grey[300],
+            child: Icon(item.isVideo ? Icons.videocam : Icons.image),
+          );
+        },
+      );
+    }
+
+    // Otherwise, load it asynchronously
     return FutureBuilder<Widget?>(
       future: _getThumbnail(item),
       builder: (context, snapshot) {
@@ -136,7 +175,7 @@ class _DeletionConfirmationScreenState
         }
         return snapshot.data ?? Container(
           color: Colors.grey[300],
-          child: const Icon(Icons.image),
+          child: Icon(item.isVideo ? Icons.videocam : Icons.image),
         );
       },
     );

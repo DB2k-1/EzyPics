@@ -531,9 +531,14 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
         if (_mediaToDelete.isEmpty) {
           Navigator.of(context).pushReplacementNamed('/home');
         } else {
+          // Navigate to deletion confirmation with cached thumbnails
           Navigator.of(context).pushReplacementNamed(
             '/deletion-confirmation',
-            arguments: _mediaToDelete,
+            arguments: {
+              'mediaToDelete': _mediaToDelete,
+              'videoThumbnailCache': _videoThumbnailCache,
+              'imageThumbnailCache': _imageThumbnailCache,
+            },
           );
         }
       } catch (e) {

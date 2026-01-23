@@ -46,17 +46,22 @@ class StatsService {
   }) async {
     final prefs = await SharedPreferences.getInstance();
     
-    // Update counts
-    final currentPhotos = await getPhotosDeleted();
-    final currentVideos = await getVideosDeleted();
+    // Read current values directly from the same prefs instance to avoid race conditions
+    final currentPhotos = prefs.getInt(_keyPhotosDeleted) ?? 0;
+    final currentVideos = prefs.getInt(_keyVideosDeleted) ?? 0;
+    final currentPhotoStorage = prefs.getInt(_keyPhotoStorageRecovered) ?? 0;
+    final currentVideoStorage = prefs.getInt(_keyVideoStorageRecovered) ?? 0;
+    
+    // Update counts atomically
     await prefs.setInt(_keyPhotosDeleted, currentPhotos + photosDeleted);
     await prefs.setInt(_keyVideosDeleted, currentVideos + videosDeleted);
     
     // Update storage
-    final currentPhotoStorage = await getPhotoStorageRecovered();
-    final currentVideoStorage = await getVideoStorageRecovered();
     await prefs.setInt(_keyPhotoStorageRecovered, currentPhotoStorage + photoStorageBytes);
     await prefs.setInt(_keyVideoStorageRecovered, currentVideoStorage + videoStorageBytes);
+    
+    // Ensure all writes are committed
+    await prefs.reload();
   }
 
   /// Format bytes to human-readable string

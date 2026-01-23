@@ -211,10 +211,14 @@ class _SwipeScreenState extends State<SwipeScreen> {
       // No items to delete, go to home screen
       Navigator.of(context).pushReplacementNamed('/home');
     } else {
-      // Navigate to deletion confirmation
+      // Navigate to deletion confirmation with cached thumbnails
       Navigator.of(context).pushReplacementNamed(
         '/deletion-confirmation',
-        arguments: _mediaToDelete,
+        arguments: {
+          'mediaToDelete': _mediaToDelete,
+          'videoThumbnailCache': _videoThumbnailCache,
+          'imageThumbnailCache': _imageThumbnailCache,
+        },
       );
     }
   }
