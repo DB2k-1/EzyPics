@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
@@ -296,51 +297,57 @@ class _DeletionConfirmationScreenState
               },
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      setState(() {
-                        _selectedIds.clear();
-                        _selectedIds.addAll(widget.mediaToDelete.map((item) => item.id));
-                      });
-                    },
-                    child: const Text('Select All'),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 2,
-                  child: ElevatedButton(
-                    onPressed: _isDeleting
-                        ? null
-                        : (_selectedIds.isEmpty
-                            ? () {
-                                Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
-                              }
-                            : _handleDelete),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _selectedIds.isEmpty ? Colors.grey : Colors.red,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
+          // Bottom controls with Android-safe padding
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                20.0,
+                20.0,
+                20.0,
+                Platform.isAndroid ? 8.0 : 20.0,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _isDeleting
+                          ? null
+                          : () {
+                              Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+                            },
+                      child: const Text('Cancel'),
                     ),
-                    child: _isDeleting
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(
-                            _selectedIds.isEmpty
-                                ? 'Return Home'
-                                : 'Delete ${_selectedIds.length} Item${_selectedIds.length != 1 ? 's' : ''}',
-                            style: const TextStyle(fontSize: 16),
-                          ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: ElevatedButton(
+                      onPressed: _isDeleting
+                          ? null
+                          : (_selectedIds.isEmpty
+                              ? null
+                              : _handleDelete),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _selectedIds.isEmpty ? Colors.grey : Colors.red,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      child: _isDeleting
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(
+                              _selectedIds.isEmpty
+                                  ? 'No Items Selected'
+                                  : 'Delete ${_selectedIds.length} Item${_selectedIds.length != 1 ? 's' : ''}',
+                              style: const TextStyle(fontSize: 16),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],

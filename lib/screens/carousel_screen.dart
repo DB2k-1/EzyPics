@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'package:photo_manager/photo_manager.dart';
@@ -296,7 +297,7 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     });
   }
 
-  void _navigateToSwipe() {
+  Future<void> _navigateToSwipe() async {
     if (_navigationTriggered) return;
     
     _navigationTriggered = true;
@@ -306,17 +307,77 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     _fadeController?.stop();
     
     if (!mounted) return;
-    
-    // Preload swipe content before transitioning
-    _preloadSwipeContent(media);
+
+    // Only filter out cloud-only media when we're offline (no connectivity).
+    // When online, show all media so iCloud can deliver on demand.
+    List<MediaItem> mediaToReview = media;
+    final connectivityResults = await Connectivity().checkConnectivity();
+    final isOffline = connectivityResults.isEmpty ||
+        connectivityResults.every((r) => r == ConnectivityResult.none);
+
+    if (isOffline) {
+      final filtered = await PhotoService.filterToLocallyAvailable(media);
+      mediaToReview = filtered.local;
+
+      if (filtered.excludedCount > 0 && mounted) {
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('Cloud photos not available'),
+            content: Text(
+              'Only locally stored photos and videos can be shown during review '
+              'because there is no internet connection.\n\n'
+              '${filtered.excludedCount} item${filtered.excludedCount == 1 ? '' : 's'} in the cloud ${filtered.excludedCount == 1 ? 'has' : 'have'} been skipped. '
+              'You can review ${filtered.local.length} locally available item${filtered.local.length == 1 ? '' : 's'}.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+
+      if (mediaToReview.isEmpty && mounted) {
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('No local photos available'),
+            content: const Text(
+              'All photos and videos for this date appear to be in the cloud and '
+              'are not available without connectivity. Connect to the internet to '
+              'download them, or try another date.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).pushReplacementNamed('/home');
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+    }
+
+    if (!mounted) return;
+
+    // Preload swipe content (all media when online, or filtered when offline)
+    _preloadSwipeContent(mediaToReview);
   }
   
   Future<void> _preloadSwipeContent(List<MediaItem> media) async {
-    
-    // Content should already be preloading from _preloadSwipeContentEarly
-    // Just transition immediately - no delay needed
+    // Use the provided media list (filtered to locally available)
     if (mounted) {
       setState(() {
+        _reviewMedia = media;
         _isReviewMode = true;
         _isComplete = false;
         _reviewEndTriggered = false;
@@ -776,7 +837,9 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
               final mediaItem = _reviewMedia[index];
               final aspectRatio = mediaItem.width / mediaItem.height;
               final maxWidth = MediaQuery.of(context).size.width - 40;
-              final maxHeight = MediaQuery.of(context).size.height * 0.6;
+              // Reduce height on Android to account for system navigation controls
+              final heightMultiplier = Platform.isAndroid ? 0.55 : 0.6;
+              final maxHeight = MediaQuery.of(context).size.height * heightMultiplier;
               
               double cardWidth;
               double cardHeight;
@@ -805,41 +868,60 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
             },
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+        // Bottom controls with Android-safe padding
+        SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              ElevatedButton(
-                onPressed: () => _handleButtonSwipe('left'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 40,
-                    vertical: 15,
-                  ),
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  40,
+                  20,
+                  40,
+                  Platform.isAndroid ? 8 : 20,
                 ),
-                child: const Text('❌ Delete', style: TextStyle(fontSize: 18)),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    ElevatedButton(
+                      onPressed: () => _handleButtonSwipe('left'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 40,
+                          vertical: 15,
+                        ),
+                      ),
+                      child: const Text('❌ Delete', style: TextStyle(fontSize: 18)),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => _handleButtonSwipe('right'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 40,
+                          vertical: 15,
+                        ),
+                      ),
+                      child: const Text('✅ Keep', style: TextStyle(fontSize: 18)),
+                    ),
+                  ],
+                ),
               ),
-              ElevatedButton(
-                onPressed: () => _handleButtonSwipe('right'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 40,
-                    vertical: 15,
-                  ),
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  20.0,
+                  0,
+                  20.0,
+                  Platform.isAndroid ? 8.0 : 20.0,
                 ),
-                child: const Text('✅ Keep', style: TextStyle(fontSize: 18)),
+                child: LinearProgressIndicator(
+                  value: progress / 100,
+                  minHeight: 4,
+                ),
               ),
             ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: LinearProgressIndicator(
-            value: progress / 100,
-            minHeight: 4,
           ),
         ),
       ],

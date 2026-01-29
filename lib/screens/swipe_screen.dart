@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
@@ -302,7 +303,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
                 // Calculate aspect ratio
                 final aspectRatio = mediaItem.width / mediaItem.height;
                 final maxWidth = MediaQuery.of(context).size.width - 40;
-                final maxHeight = MediaQuery.of(context).size.height * 0.6;
+                // Reduce height on Android to account for system navigation controls
+                final heightMultiplier = Platform.isAndroid ? 0.55 : 0.6;
+                final maxHeight = MediaQuery.of(context).size.height * heightMultiplier;
                 
                 // Calculate actual dimensions maintaining aspect ratio
                 double cardWidth;
@@ -334,41 +337,60 @@ class _SwipeScreenState extends State<SwipeScreen> {
               },
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+          // Bottom controls with Android-safe padding
+          SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                ElevatedButton(
-                  onPressed: () => _handleButtonSwipe('left'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 40,
-                      vertical: 15,
-                    ),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    40,
+                    20,
+                    40,
+                    Platform.isAndroid ? 8 : 20,
                   ),
-                  child: const Text('❌ Delete', style: TextStyle(fontSize: 18)),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      ElevatedButton(
+                        onPressed: () => _handleButtonSwipe('left'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 40,
+                            vertical: 15,
+                          ),
+                        ),
+                        child: const Text('❌ Delete', style: TextStyle(fontSize: 18)),
+                      ),
+                      ElevatedButton(
+                        onPressed: () => _handleButtonSwipe('right'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 40,
+                            vertical: 15,
+                          ),
+                        ),
+                        child: const Text('✅ Keep', style: TextStyle(fontSize: 18)),
+                      ),
+                    ],
+                  ),
                 ),
-                ElevatedButton(
-                  onPressed: () => _handleButtonSwipe('right'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 40,
-                      vertical: 15,
-                    ),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    20.0,
+                    0,
+                    20.0,
+                    Platform.isAndroid ? 8.0 : 20.0,
                   ),
-                  child: const Text('✅ Keep', style: TextStyle(fontSize: 18)),
+                  child: LinearProgressIndicator(
+                    value: progress / 100,
+                    minHeight: 4,
+                  ),
                 ),
               ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: LinearProgressIndicator(
-              value: progress / 100,
-              minHeight: 4,
             ),
           ),
         ],

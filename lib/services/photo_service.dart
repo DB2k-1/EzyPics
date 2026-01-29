@@ -134,5 +134,31 @@ class PhotoService {
     }
     return sizes;
   }
+
+  /// Filter media to only items that are locally available (not iCloud-only).
+  /// Returns the locally available list and the count of excluded (cloud) items.
+  static Future<({List<MediaItem> local, int excludedCount})> filterToLocallyAvailable(
+    List<MediaItem> items,
+  ) async {
+    if (items.isEmpty) {
+      return (local: <MediaItem>[], excludedCount: 0);
+    }
+    final local = <MediaItem>[];
+    for (final item in items) {
+      try {
+        final asset = await AssetEntity.fromId(item.id)
+            .timeout(const Duration(seconds: 3), onTimeout: () => null);
+        if (asset == null) continue;
+        final available = await asset.isLocallyAvailable()
+            .timeout(const Duration(seconds: 2), onTimeout: () => false);
+        if (available) {
+          local.add(item);
+        }
+      } catch (_) {
+        // Treat errors (e.g. no network) as not available
+      }
+    }
+    return (local: local, excludedCount: items.length - local.length);
+  }
 }
 
