@@ -25,10 +25,12 @@ class SwipeScreen extends StatefulWidget {
 class _SwipeScreenState extends State<SwipeScreen> {
   final List<MediaItem> _mediaToDelete = [];
   final CardSwiperController _swiperController = CardSwiperController();
-  // In-memory cache for video thumbnails (session only, cleared on dispose)
   final Map<String, Uint8List> _videoThumbnailCache = {};
-  // In-memory cache for image thumbnails (session only, cleared on dispose)
   final Map<String, Uint8List> _imageThumbnailCache = {};
+  final List<String> _imageThumbnailOrder = [];
+  final List<String> _videoThumbnailOrder = [];
+  static const int _kMaxThumbnailCacheSize = 40;
+  static const int _kMaxThumbnailDimension = 480;
   int _currentIndex = 0;
 
   @override
@@ -51,9 +53,10 @@ class _SwipeScreenState extends State<SwipeScreen> {
   
   @override
   void dispose() {
-    // Clear the cache when screen is disposed
     _videoThumbnailCache.clear();
     _imageThumbnailCache.clear();
+    _imageThumbnailOrder.clear();
+    _videoThumbnailOrder.clear();
     _swiperController.dispose();
     super.dispose();
   }
@@ -95,24 +98,16 @@ class _SwipeScreenState extends State<SwipeScreen> {
       final asset = await AssetEntity.fromId(mediaId);
       if (asset == null) return;
       
-      // Find the media item to get its dimensions
       final mediaItem = widget.media.firstWhere((item) => item.id == mediaId);
-      
-      // Generate thumbnail maintaining aspect ratio
-      // Use max dimension of 800, but maintain aspect ratio
       int thumbWidth;
       int thumbHeight;
-      
       if (mediaItem.width > mediaItem.height) {
-        // Landscape: width is larger
-        thumbWidth = 800;
-        thumbHeight = (800 * mediaItem.height / mediaItem.width).round();
+        thumbWidth = _kMaxThumbnailDimension;
+        thumbHeight = (_kMaxThumbnailDimension * mediaItem.height / mediaItem.width).round();
       } else {
-        // Portrait: height is larger
-        thumbHeight = 800;
-        thumbWidth = (800 * mediaItem.width / mediaItem.height).round();
+        thumbHeight = _kMaxThumbnailDimension;
+        thumbWidth = (_kMaxThumbnailDimension * mediaItem.width / mediaItem.height).round();
       }
-      
       final thumbnail = await asset.thumbnailDataWithSize(
         ThumbnailSize(thumbWidth, thumbHeight),
       );
@@ -120,6 +115,12 @@ class _SwipeScreenState extends State<SwipeScreen> {
       if (thumbnail != null && mounted) {
         setState(() {
           _imageThumbnailCache[mediaId] = thumbnail;
+          _imageThumbnailOrder.add(mediaId);
+          while (_imageThumbnailCache.length > _kMaxThumbnailCacheSize &&
+              _imageThumbnailOrder.isNotEmpty) {
+            final evict = _imageThumbnailOrder.removeAt(0);
+            _imageThumbnailCache.remove(evict);
+          }
         });
         print('Cached thumbnail for image: $mediaId (${thumbWidth}x${thumbHeight})');
       }
@@ -134,12 +135,18 @@ class _SwipeScreenState extends State<SwipeScreen> {
       if (asset == null) return;
       
       final thumbnail = await asset.thumbnailDataWithSize(
-        const ThumbnailSize(800, 800), // Higher quality for better display
+        const ThumbnailSize(480, 480),
       );
       
       if (thumbnail != null && mounted) {
         setState(() {
           _videoThumbnailCache[mediaId] = thumbnail;
+          _videoThumbnailOrder.add(mediaId);
+          while (_videoThumbnailCache.length > _kMaxThumbnailCacheSize &&
+              _videoThumbnailOrder.isNotEmpty) {
+            final evict = _videoThumbnailOrder.removeAt(0);
+            _videoThumbnailCache.remove(evict);
+          }
         });
         print('Cached thumbnail for video: $mediaId');
       }

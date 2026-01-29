@@ -755,8 +755,14 @@ class _SwipeCardState extends State<SwipeCard> {
       final asset = await AssetEntity.fromId(widget.mediaItem.id)
           .timeout(const Duration(seconds: 5), onTimeout: () => null);
       if (asset != null) {
+        // Use fixed max dimension to avoid full-resolution decode (memory)
+        const maxDim = 480;
+        final w = widget.mediaItem.width;
+        final h = widget.mediaItem.height;
+        final thumbW = w > h ? maxDim : (maxDim * w / h).round();
+        final thumbH = w > h ? (maxDim * h / w).round() : maxDim;
         return await asset.thumbnailDataWithSize(
-          ThumbnailSize(widget.mediaItem.width, widget.mediaItem.height),
+          ThumbnailSize(thumbW, thumbH),
         ).timeout(const Duration(seconds: 5), onTimeout: () => null);
       }
     } catch (e) {
@@ -835,21 +841,17 @@ class _SwipeCardState extends State<SwipeCard> {
           .timeout(const Duration(seconds: 5), onTimeout: () => null);
       if (asset == null) return null;
       
-      // Generate thumbnail maintaining aspect ratio
-      // Use max dimension of 800, but maintain aspect ratio
+      // Use 480 max dimension to limit memory (avoid 800+ on large libraries)
+      const maxDim = 480;
       int thumbWidth;
       int thumbHeight;
-      
       if (widget.mediaItem.width > widget.mediaItem.height) {
-        // Landscape: width is larger
-        thumbWidth = 800;
-        thumbHeight = (800 * widget.mediaItem.height / widget.mediaItem.width).round();
+        thumbWidth = maxDim;
+        thumbHeight = (maxDim * widget.mediaItem.height / widget.mediaItem.width).round();
       } else {
-        // Portrait: height is larger
-        thumbHeight = 800;
-        thumbWidth = (800 * widget.mediaItem.width / widget.mediaItem.height).round();
+        thumbHeight = maxDim;
+        thumbWidth = (maxDim * widget.mediaItem.width / widget.mediaItem.height).round();
       }
-      
       return await asset.thumbnailDataWithSize(
         ThumbnailSize(thumbWidth, thumbHeight),
       ).timeout(const Duration(seconds: 5), onTimeout: () => null);

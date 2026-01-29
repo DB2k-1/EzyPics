@@ -45,6 +45,10 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
   final CardSwiperController _swiperController = CardSwiperController();
   final Map<String, Uint8List> _videoThumbnailCache = {};
   final Map<String, Uint8List> _imageThumbnailCache = {};
+  final List<String> _imageThumbnailOrder = [];
+  final List<String> _videoThumbnailOrder = [];
+  static const int _kMaxThumbnailCacheSize = 40;
+  static const int _kMaxThumbnailDimension = 480;
   int _currentIndex = 0;
   Timer? _batchUpdateTimer;
   final Map<String, Uint8List> _pendingThumbnailUpdates = {};
@@ -78,6 +82,8 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     _batchUpdateTimer?.cancel();
     _videoThumbnailCache.clear();
     _imageThumbnailCache.clear();
+    _imageThumbnailOrder.clear();
+    _videoThumbnailOrder.clear();
     _pendingThumbnailUpdates.clear();
     super.dispose();
   }
@@ -442,13 +448,12 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
       
       int thumbWidth;
       int thumbHeight;
-      
       if (mediaItem.width > mediaItem.height) {
-        thumbWidth = 800;
-        thumbHeight = (800 * mediaItem.height / mediaItem.width).round();
+        thumbWidth = _kMaxThumbnailDimension;
+        thumbHeight = (_kMaxThumbnailDimension * mediaItem.height / mediaItem.width).round();
       } else {
-        thumbHeight = 800;
-        thumbWidth = (800 * mediaItem.width / mediaItem.height).round();
+        thumbHeight = _kMaxThumbnailDimension;
+        thumbWidth = (_kMaxThumbnailDimension * mediaItem.width / mediaItem.height).round();
       }
       
       final thumbnail = await asset.thumbnailDataWithSize(
@@ -474,7 +479,7 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
       if (asset == null) return;
       
       final thumbnail = await asset.thumbnailDataWithSize(
-        const ThumbnailSize(800, 800),
+        const ThumbnailSize(480, 480),
       ).timeout(const Duration(seconds: 5), onTimeout: () => null);
       
       if (thumbnail != null && mounted) {
@@ -488,7 +493,7 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     }
   }
   
-  /// Batch setState calls to reduce rebuilds
+  /// Batch setState calls to reduce rebuilds; evict oldest thumbnails when over cap
   void _scheduleBatchUpdate() {
     _batchUpdateTimer?.cancel();
     _batchUpdateTimer = Timer(const Duration(milliseconds: 100), () {
@@ -499,8 +504,20 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
           if (entry.key.startsWith('video_')) {
             final mediaId = entry.key.substring(6);
             _videoThumbnailCache[mediaId] = entry.value;
+            _videoThumbnailOrder.add(mediaId);
+            while (_videoThumbnailCache.length > _kMaxThumbnailCacheSize &&
+                _videoThumbnailOrder.isNotEmpty) {
+              final evict = _videoThumbnailOrder.removeAt(0);
+              _videoThumbnailCache.remove(evict);
+            }
           } else {
             _imageThumbnailCache[entry.key] = entry.value;
+            _imageThumbnailOrder.add(entry.key);
+            while (_imageThumbnailCache.length > _kMaxThumbnailCacheSize &&
+                _imageThumbnailOrder.isNotEmpty) {
+              final evict = _imageThumbnailOrder.removeAt(0);
+              _imageThumbnailCache.remove(evict);
+            }
           }
         }
         _pendingThumbnailUpdates.clear();
