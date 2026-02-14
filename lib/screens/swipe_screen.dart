@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../models/media_item.dart';
+import '../utils/cache_cleanup.dart';
 import '../utils/date_utils.dart';
 import '../widgets/logo_widget.dart';
 import '../widgets/swipe_card.dart';
@@ -58,6 +59,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
     _imageThumbnailOrder.clear();
     _videoThumbnailOrder.clear();
     _swiperController.dispose();
+    CacheCleanup.clearImageCache();
     super.dispose();
   }
   

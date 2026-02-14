@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
 
 class ImageBrandingService {
@@ -103,14 +104,14 @@ class ImageBrandingService {
       // Note: Text overlay "via EzyPics" can be added here in the future
       // For now, the text is included in the share message
 
-      // Save branded image to temp file
+      // Save branded image to app temp dir (cleaned on startup by CacheCleanup)
       final brandedBytes = Uint8List.fromList(img.encodePng(brandedImage));
       if (brandedBytes.isEmpty) {
         print('Error: Encoded branded image bytes are empty');
         return null;
       }
-      
-      final tempDir = Directory.systemTemp;
+
+      final tempDir = await getTemporaryDirectory();
       final tempFile = File('${tempDir.path}/branded_${DateTime.now().millisecondsSinceEpoch}.png');
       await tempFile.writeAsBytes(brandedBytes);
       

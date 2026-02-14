@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 import 'screens/permission_screen.dart';
 import 'screens/carousel_screen.dart';
@@ -9,10 +10,19 @@ import 'screens/settings_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/photo_service.dart';
 import 'models/media_item.dart';
+import 'utils/cache_cleanup.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
+  // Keep app lean: limit Flutter's image cache (default is 1000 images / 100MB).
+  // We only show thumbnails; a smaller cache reduces memory and storage pressure.
+  PaintingBinding.instance.imageCache.maximumSize = 60;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 25 * 1024 * 1024; // 25 MB
+
+  // Clear leftover temp files from sharing/test generator without blocking launch
+  CacheCleanup.clearTempFilesOnStartup();
+
   // Force portrait mode
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,

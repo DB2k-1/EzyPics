@@ -80,35 +80,40 @@ class ShareService {
 
         // Brand the image
         print('Starting image branding...');
-        final brandedFile = await ImageBrandingService.brandImage(file);
-        if (brandedFile == null) {
-          // If branding fails, share original
-          print('Branding failed, sharing original image');
+        File? brandedFile;
+        try {
+          brandedFile = await ImageBrandingService.brandImage(file);
+          if (brandedFile == null) {
+            // If branding fails, share original
+            print('Branding failed, sharing original image');
+            await Share.shareXFiles(
+              [XFile(file.path)],
+              text: shareText,
+              sharePositionOrigin: sharePositionOrigin,
+            );
+            return;
+          }
+
+          print('Branding successful, sharing branded image: ${brandedFile.path}');
+
+          // Share branded image
           await Share.shareXFiles(
-            [XFile(file.path)],
+            [XFile(brandedFile.path)],
             text: shareText,
             sharePositionOrigin: sharePositionOrigin,
           );
-          return;
-        }
-        
-        print('Branding successful, sharing branded image: ${brandedFile.path}');
-
-        // Share branded image
-        await Share.shareXFiles(
-          [XFile(brandedFile.path)],
-          text: shareText,
-          sharePositionOrigin: sharePositionOrigin,
-        );
-
-        // Clean up temp file after a delay
-        Future.delayed(const Duration(seconds: 5), () {
-          try {
-            brandedFile.deleteSync();
-          } catch (e) {
-            // Ignore cleanup errors
+        } finally {
+          // Always schedule temp file cleanup so we don't leave files if share is cancelled or fails
+          if (brandedFile != null) {
+            Future.delayed(const Duration(seconds: 5), () {
+              try {
+                brandedFile!.deleteSync();
+              } catch (e) {
+                // Ignore; CacheCleanup will remove on next startup
+              }
+            });
           }
-        });
+        }
       }
     } catch (e) {
       print('Error sharing media: $e');
