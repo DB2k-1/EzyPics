@@ -20,15 +20,53 @@ void main() async {
   PaintingBinding.instance.imageCache.maximumSize = 60;
   PaintingBinding.instance.imageCache.maximumSizeBytes = 25 * 1024 * 1024; // 25 MB
 
-  // Clear leftover temp files from sharing/test generator without blocking launch
-  CacheCleanup.clearTempFilesOnStartup();
+  // Don't clear cache on startup — the engine/plugins expect some files to exist;
+  // clearing here causes "fopen failed / Invalidating cache" in the console.
+  // We only clear when the app goes to background so Documents & Data drops.
 
   // Force portrait mode
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
   ]);
 
-  runApp(const EzyPicsApp());
+  runApp(const CacheCleanupAppWrapper());
+}
+
+/// Wraps the app and clears cache when going to background so "Documents & Data"
+/// drops after the user leaves the app (instead of refilling during use).
+class CacheCleanupAppWrapper extends StatefulWidget {
+  const CacheCleanupAppWrapper({super.key});
+
+  @override
+  State<CacheCleanupAppWrapper> createState() => _CacheCleanupAppWrapperState();
+}
+
+class _CacheCleanupAppWrapperState extends State<CacheCleanupAppWrapper>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      // Clear cache when user leaves app so storage size drops. Don't await.
+      CacheCleanup.clearTempFilesOnStartup();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const EzyPicsApp();
+  }
 }
 
 class EzyPicsApp extends StatelessWidget {
