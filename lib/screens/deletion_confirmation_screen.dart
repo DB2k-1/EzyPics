@@ -5,6 +5,7 @@ import 'package:photo_manager/photo_manager.dart';
 import '../models/media_item.dart';
 import '../services/photo_service.dart';
 import '../services/stats_service.dart';
+import '../utils/cache_cleanup.dart';
 import '../widgets/logo_widget.dart';
 
 class DeletionConfirmationScreen extends StatefulWidget {
@@ -74,38 +75,47 @@ class _DeletionConfirmationScreenState
       ),
     );
 
-    if (confirmed == true) {
-      setState(() => _isDeleting = true);
-      final itemsToDelete = widget.mediaToDelete
-          .where((item) => _selectedIds.contains(item.id))
-          .toList();
+    if (confirmed != true) return;
 
-      // Get file sizes before deletion
-      final fileSizes = await PhotoService.getFileSizes(itemsToDelete);
-      
-      // Calculate stats
+    // Dismiss dialog and show loading immediately so UI doesn't feel stuck
+    setState(() => _isDeleting = true);
+
+    final itemsToDelete = widget.mediaToDelete
+        .where((item) => _selectedIds.contains(item.id))
+        .toList();
+
+    // Yield so the full-screen spinner paints before we do heavy work
+    await Future.delayed(Duration.zero);
+    if (!context.mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!context.mounted) return;
+
       int photosDeleted = 0;
       int videosDeleted = 0;
       int photoStorageBytes = 0;
       int videoStorageBytes = 0;
-      
-      for (final item in itemsToDelete) {
-        final size = fileSizes[item.id] ?? 0;
-        if (item.isVideo) {
-          videosDeleted++;
-          videoStorageBytes += size;
-        } else {
-          photosDeleted++;
-          photoStorageBytes += size;
+
+      try {
+        // Get file sizes in parallel for speed (before deletion)
+        final fileSizes = await PhotoService.getFileSizes(itemsToDelete);
+        for (final item in itemsToDelete) {
+          final size = fileSizes[item.id] ?? 0;
+          if (item.isVideo) {
+            videosDeleted++;
+            videoStorageBytes += size;
+          } else {
+            photosDeleted++;
+            photoStorageBytes += size;
+          }
         }
-      }
 
-      print('DeletionConfirmationScreen: Deleting ${itemsToDelete.length} items - Photos: $photosDeleted, Videos: $videosDeleted');
+        print('DeletionConfirmationScreen: Deleting ${itemsToDelete.length} items - Photos: $photosDeleted, Videos: $videosDeleted');
 
-      final success = await PhotoService.deleteMediaItems(itemsToDelete);
-      setState(() => _isDeleting = false);
+        final success = await PhotoService.deleteMediaItems(itemsToDelete);
 
-      if (context.mounted) {
+        if (!context.mounted) return;
+        setState(() => _isDeleting = false);
+
         if (success) {
           // Record stats
           print('DeletionConfirmationScreen: Recording stats - Photos: $photosDeleted, Videos: $videosDeleted');
@@ -115,30 +125,39 @@ class _DeletionConfirmationScreenState
             photoStorageBytes: photoStorageBytes,
             videoStorageBytes: videoStorageBytes,
           );
-          
-          // Verify the stats were recorded correctly
-          final verifyPhotos = await StatsService.getPhotosDeleted();
-          final verifyVideos = await StatsService.getVideosDeleted();
-          print('DeletionConfirmationScreen: Verified stats - Photos: $verifyPhotos, Videos: $verifyVideos');
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Successfully deleted ${itemsToDelete.length} item(s)'),
-            ),
-          );
-          // Navigate to home screen after deletion
-          // Use a small delay to ensure SharedPreferences writes are committed
-          await Future.delayed(const Duration(milliseconds: 100));
+
+          // Clear app cache so Documents & Data drops after deletion
+          CacheCleanup.clearImageCache();
+          await CacheCleanup.clearTempFilesOnStartup();
+
           if (context.mounted) {
-            Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Successfully deleted ${itemsToDelete.length} item(s)'),
+              ),
+            );
+            await Future.delayed(const Duration(milliseconds: 100));
+            if (context.mounted) {
+              Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+            }
           }
         } else {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Failed to delete items')),
+            );
+          }
+        }
+      } catch (e) {
+        print('DeletionConfirmationScreen: Error during deletion: $e');
+        if (context.mounted) {
+          setState(() => _isDeleting = false);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Failed to delete items')),
           );
         }
       }
-    }
+    });
   }
 
   Widget _buildThumbnail(MediaItem item) {
@@ -232,7 +251,9 @@ class _DeletionConfirmationScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
+      body: Stack(
+        children: [
+          Column(
           children: [
           LogoWidget(
             onTap: () => Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false),
@@ -350,6 +371,37 @@ class _DeletionConfirmationScreenState
               ),
             ),
           ),
+        ],
+          ),
+          if (_isDeleting)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black54,
+                child: const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3,
+                          color: Colors.white,
+                        ),
+                      ),
+                      SizedBox(height: 16),
+                      Text(
+                        'Deleting…',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

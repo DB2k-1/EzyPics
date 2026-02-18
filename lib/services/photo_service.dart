@@ -125,14 +125,13 @@ class PhotoService {
     }
   }
 
-  /// Get file sizes for multiple media items
+  /// Get file sizes for multiple media items (runs in parallel for speed).
   static Future<Map<String, int>> getFileSizes(List<MediaItem> items) async {
-    final sizes = <String, int>{};
-    for (final item in items) {
-      final size = await getFileSize(item);
-      sizes[item.id] = size;
-    }
-    return sizes;
+    if (items.isEmpty) return {};
+    final results = await Future.wait(
+      items.map((item) => getFileSize(item).then((size) => MapEntry(item.id, size))),
+    );
+    return Map.fromEntries(results);
   }
 
   /// Filter media to only items that are locally available (not iCloud-only).
