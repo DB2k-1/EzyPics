@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -33,6 +34,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
   static const int _kMaxThumbnailCacheSize = 40;
   static const int _kMaxThumbnailDimension = 480;
   int _currentIndex = 0;
+  Timer? _diskCacheCleanupTimer;
 
   @override
   void initState() {
@@ -50,16 +52,23 @@ class _SwipeScreenState extends State<SwipeScreen> {
     
     // Preload the first item's file
     _preloadNextItem(0);
+    // Cap "Documents & Data" during long review: clear disk caches every 2 min
+    _diskCacheCleanupTimer = Timer.periodic(
+      const Duration(minutes: 2),
+      (_) => CacheCleanup.clearAllDiskCaches(),
+    );
   }
-  
+
   @override
   void dispose() {
+    _diskCacheCleanupTimer?.cancel();
     _videoThumbnailCache.clear();
     _imageThumbnailCache.clear();
     _imageThumbnailOrder.clear();
     _videoThumbnailOrder.clear();
     _swiperController.dispose();
     CacheCleanup.clearImageCache();
+    CacheCleanup.clearAllDiskCaches(); // Free disk so "Documents & Data" doesn't stay high
     super.dispose();
   }
   

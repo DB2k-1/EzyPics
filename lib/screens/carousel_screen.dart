@@ -53,10 +53,16 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
   int _currentIndex = 0;
   Timer? _batchUpdateTimer;
   final Map<String, Uint8List> _pendingThumbnailUpdates = {};
+  Timer? _diskCacheCleanupTimer;
 
   @override
   void initState() {
     super.initState();
+    // Cap "Documents & Data" during long review: clear disk caches every 2 min
+    _diskCacheCleanupTimer = Timer.periodic(
+      const Duration(minutes: 2),
+      (_) => CacheCleanup.clearAllDiskCaches(),
+    );
   }
 
   @override
@@ -78,6 +84,7 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
   @override
   void dispose() {
     _galleryTimer?.cancel();
+    _diskCacheCleanupTimer?.cancel();
     _fadeController?.dispose();
     _swiperController.dispose();
     _batchUpdateTimer?.cancel();
@@ -87,6 +94,7 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     _videoThumbnailOrder.clear();
     _pendingThumbnailUpdates.clear();
     CacheCleanup.clearImageCache();
+    CacheCleanup.clearAllDiskCaches(); // Free disk so "Documents & Data" doesn't stay high
     super.dispose();
   }
 
