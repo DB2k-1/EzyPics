@@ -21,6 +21,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _photoStorageBytes = 0;
   int _videoStorageBytes = 0;
   bool _isLoading = true;
+  bool _isPreparingReview = false;
 
   @override
   void initState() {
@@ -89,26 +90,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         children: [
                           // Review Media button - white bubble with app icon
                           InkWell(
-                            onTap: () async {
-                              // Clear old Documents & Data in background when starting a review
-                              CacheCleanup.clearAllDiskCaches();
-                              // Check if there's media for today's date
-                              final todayKey = AppDateUtils.getTodayDateKey();
-                              final mediaMap = await PhotoService.scanMediaByDate();
-                              
-                              // Check if widget is still mounted before using context
-                              if (!mounted) return;
-                              
-                              final mediaForToday = mediaMap[todayKey] ?? [];
-                              
-                              if (mediaForToday.isEmpty) {
-                                // No media for today, go to date selector
-                                Navigator.of(context).pushReplacementNamed('/settings');
-                              } else {
-                                // Has media, go to carousel
-                                Navigator.of(context).pushReplacementNamed('/carousel');
-                              }
-                            },
+                            onTap: _isPreparingReview
+                                ? null
+                                : () async {
+                                    setState(() => _isPreparingReview = true);
+                                    try {
+                                      // Complete storage cleanup before showing media
+                                      await CacheCleanup.clearAllDiskCaches();
+                                      if (!mounted) return;
+                                      // Check if there's media for today's date
+                                      final todayKey = AppDateUtils.getTodayDateKey();
+                                      final mediaMap = await PhotoService.scanMediaByDate();
+                                      if (!mounted) return;
+                                      final mediaForToday = mediaMap[todayKey] ?? [];
+                                      if (mediaForToday.isEmpty) {
+                                        Navigator.of(context).pushReplacementNamed('/settings');
+                                      } else {
+                                        Navigator.of(context).pushReplacementNamed('/carousel');
+                                      }
+                                    } finally {
+                                      if (mounted) setState(() => _isPreparingReview = false);
+                                    }
+                                  },
                             borderRadius: BorderRadius.circular(12),
                             child: Container(
                               decoration: BoxDecoration(
@@ -125,24 +128,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                               ),
                               child: Row(
                                 children: [
-                                  Container(
+                                  SizedBox(
                                     width: 48,
                                     height: 48,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Image.asset(
-                                        'assets/app_icon.png',
-                                        fit: BoxFit.cover,
-                                      ),
-                                    ),
+                                    child: _isPreparingReview
+                                        ? const Center(
+                                            child: SizedBox(
+                                              width: 28,
+                                              height: 28,
+                                              child: CircularProgressIndicator(strokeWidth: 2),
+                                            ),
+                                          )
+                                        : ClipRRect(
+                                            borderRadius: BorderRadius.circular(8),
+                                            child: Image.asset(
+                                              'assets/app_icon.png',
+                                              fit: BoxFit.cover,
+                                            ),
+                                          ),
                                   ),
                                   const SizedBox(width: 16),
-                                  const Text(
-                                    'Review Media',
-                                    style: TextStyle(
+                                  Text(
+                                    _isPreparingReview ? 'Preparing…' : 'Review Media',
+                                    style: const TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.w600,
                                       color: Colors.black87,

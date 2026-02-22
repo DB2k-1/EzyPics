@@ -68,18 +68,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // Get date key (MM-DD format, ignoring year)
     final dateKey = AppDateUtils.getDateKey(selectedDate);
     final media = _mediaMap[dateKey] ?? [];
-    
-    // Only navigate if there's media for this date
-    if (media.isEmpty) {
-      return;
-    }
-    // Clear old Documents & Data in background when starting a review
-    CacheCleanup.clearAllDiskCaches();
-    // Navigate back to carousel with the selected date
-    Navigator.of(context).pushReplacementNamed(
-      '/carousel',
-      arguments: {'dateKey': dateKey},
+    if (media.isEmpty) return;
+    _startReviewForDate(dateKey);
+  }
+
+  Future<void> _startReviewForDate(String dateKey) async {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Preparing…'),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
+    try {
+      await CacheCleanup.clearAllDiskCaches();
+      if (!mounted) return;
+      Navigator.of(context).pop(); // close dialog
+      if (!mounted) return;
+      Navigator.of(context).pushReplacementNamed(
+        '/carousel',
+        arguments: {'dateKey': dateKey},
+      );
+    } catch (_) {
+      if (mounted) Navigator.of(context).pop(); // close dialog on error
+    }
   }
 
   Widget _buildCalendar() {
