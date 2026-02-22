@@ -126,9 +126,9 @@ class _DeletionConfirmationScreenState
             videoStorageBytes: videoStorageBytes,
           );
 
-          // Clear app cache so Documents & Data drops after deletion
+          // Clear app cache on confirm so Documents & Data drops after deletion
           CacheCleanup.clearImageCache();
-          await CacheCleanup.clearTempFilesOnStartup();
+          await CacheCleanup.clearAllDiskCaches();
 
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(

@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import '../services/stats_service.dart';
 import '../services/photo_service.dart';
 import '../utils/date_utils.dart';
+import '../utils/cache_cleanup.dart';
 import '../widgets/logo_widget.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -89,6 +90,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           // Review Media button - white bubble with app icon
                           InkWell(
                             onTap: () async {
+                              // Clear old Documents & Data in background when starting a review
+                              CacheCleanup.clearAllDiskCaches();
                               // Check if there's media for today's date
                               final todayKey = AppDateUtils.getTodayDateKey();
                               final mediaMap = await PhotoService.scanMediaByDate();

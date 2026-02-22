@@ -4,6 +4,7 @@ import '../models/media_item.dart';
 import '../services/photo_service.dart';
 import '../services/test_photo_generator.dart';
 import '../utils/date_utils.dart';
+import '../utils/cache_cleanup.dart';
 import '../widgets/logo_widget.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -72,7 +73,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (media.isEmpty) {
       return;
     }
-    
+    // Clear old Documents & Data in background when starting a review
+    CacheCleanup.clearAllDiskCaches();
     // Navigate back to carousel with the selected date
     Navigator.of(context).pushReplacementNamed(
       '/carousel',
