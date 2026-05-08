@@ -108,19 +108,20 @@ class PhotoService {
     }
   }
 
-  /// Get file size for a media item (in bytes)
+  /// Get file size for a media item (in bytes).
+  ///
+  /// Uses per-operation timeouts so iCloud downloads don't block the caller.
+  /// Returns 0 on timeout or error rather than hanging.
   static Future<int> getFileSize(MediaItem item) async {
     try {
-      final asset = await AssetEntity.fromId(item.id);
+      final asset = await AssetEntity.fromId(item.id)
+          .timeout(const Duration(seconds: 3), onTimeout: () => null);
       if (asset == null) return 0;
-      
-      final file = await asset.file;
+      final file = await asset.file
+          .timeout(const Duration(seconds: 3), onTimeout: () => null);
       if (file == null) return 0;
-      
-      final size = await file.length();
-      return size;
+      return await file.length();
     } catch (e) {
-      print('Error getting file size: $e');
       return 0;
     }
   }

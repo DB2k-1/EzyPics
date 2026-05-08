@@ -43,7 +43,7 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
   List<MediaItem> _reviewMedia = [];
   /// false = delete, true = keep. Absent = undecided (treated as keep on finish).
   final Map<String, bool> _reviewDecisions = {};
-  final PageController _reviewPageController = PageController();
+  final PageController _reviewPageController = PageController(viewportFraction: 0.82);
   final Map<String, Uint8List> _videoThumbnailCache = {};
   final Map<String, Uint8List> _imageThumbnailCache = {};
   final List<String> _imageThumbnailOrder = [];
@@ -810,80 +810,63 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
           ),
         ),
         Expanded(
-          child: Stack(
-            children: [
-              PageView.builder(
-                controller: _reviewPageController,
-                scrollDirection: Axis.vertical,
-                physics: const BouncingScrollPhysics(),
-                itemCount: _reviewMedia.length,
-                onPageChanged: (index) {
-                  setState(() => _currentIndex = index);
-                  _preloadNextItem(index);
-                  if (index + 1 < _reviewMedia.length) _preloadNextItem(index + 1);
-                },
-                itemBuilder: (context, index) {
-                  final mediaItem = _reviewMedia[index];
-                  final aspectRatio = mediaItem.width / mediaItem.height;
-                  final maxWidth = MediaQuery.of(context).size.width - 40;
-                  final heightMultiplier = Platform.isAndroid ? 0.55 : 0.6;
-                  final maxHeight = MediaQuery.of(context).size.height * heightMultiplier;
-
-                  double cardWidth;
-                  double cardHeight;
-                  if (aspectRatio > maxWidth / maxHeight) {
-                    cardWidth = maxWidth;
-                    cardHeight = cardWidth / aspectRatio;
-                  } else {
-                    cardHeight = maxHeight;
-                    cardWidth = cardHeight * aspectRatio;
-                  }
-
-                  return Center(
-                    child: SizedBox(
-                      width: cardWidth,
-                      height: cardHeight,
-                      child: ReviewCard(
-                        key: ValueKey('${mediaItem.id}_$index'),
-                        mediaItem: mediaItem,
-                        cachedThumbnail: mediaItem.isVideo
-                            ? _videoThumbnailCache[mediaItem.id]
-                            : _imageThumbnailCache[mediaItem.id],
-                        decision: _reviewDecisions[mediaItem.id],
-                        onDecide: (keep) {
-                          setState(() => _reviewDecisions[mediaItem.id] = keep);
-                          if (index + 1 < _reviewMedia.length) {
-                            _reviewPageController.nextPage(
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeInOut,
-                            );
-                          }
-                        },
+          child: PageView.builder(
+            controller: _reviewPageController,
+            scrollDirection: Axis.vertical,
+            physics: const BouncingScrollPhysics(),
+            itemCount: _reviewMedia.length,
+            onPageChanged: (index) {
+              setState(() => _currentIndex = index);
+              _preloadNextItem(index);
+              if (index + 1 < _reviewMedia.length) _preloadNextItem(index + 1);
+            },
+            itemBuilder: (context, index) {
+              final mediaItem = _reviewMedia[index];
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 20),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final aspectRatio = mediaItem.width / mediaItem.height;
+                    double cardWidth;
+                    double cardHeight;
+                    if (aspectRatio > constraints.maxWidth / constraints.maxHeight) {
+                      cardWidth = constraints.maxWidth;
+                      cardHeight = cardWidth / aspectRatio;
+                    } else {
+                      cardHeight = constraints.maxHeight;
+                      cardWidth = cardHeight * aspectRatio;
+                    }
+                    return Center(
+                      child: SizedBox(
+                        width: cardWidth,
+                        height: cardHeight,
+                        child: ReviewCard(
+                          key: ValueKey('${mediaItem.id}_$index'),
+                          mediaItem: mediaItem,
+                          cachedThumbnail: mediaItem.isVideo
+                              ? _videoThumbnailCache[mediaItem.id]
+                              : _imageThumbnailCache[mediaItem.id],
+                          decision: _reviewDecisions[mediaItem.id],
+                          onDecide: (keep) {
+                            setState(() => _reviewDecisions[mediaItem.id] = keep);
+                            if (index + 1 < _reviewMedia.length) {
+                              _reviewPageController.nextPage(
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOut,
+                              );
+                            } else {
+                              Future.delayed(const Duration(milliseconds: 400), () {
+                                if (mounted) _onReviewEnd();
+                              });
+                            }
+                          },
+                        ),
                       ),
-                    ),
-                  );
-                },
-              ),
-              // Navigation hints
-              if (_currentIndex > 0)
-                const Positioned(
-                  top: 4,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Icon(Icons.keyboard_arrow_up, color: Colors.black38, size: 28),
-                  ),
+                    );
+                  },
                 ),
-              if (_currentIndex < _reviewMedia.length - 1)
-                const Positioned(
-                  bottom: 4,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Icon(Icons.keyboard_arrow_down, color: Colors.black38, size: 28),
-                  ),
-                ),
-            ],
+              );
+            },
           ),
         ),
         SafeArea(

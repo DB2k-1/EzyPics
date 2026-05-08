@@ -26,7 +26,8 @@ class SwipeScreen extends StatefulWidget {
 class _SwipeScreenState extends State<SwipeScreen> {
   /// false = delete, true = keep. Absent = undecided (treated as keep on finish).
   final Map<String, bool> _decisions = {};
-  final PageController _pageController = PageController();
+  // viewportFraction < 1 shows ~9% of adjacent images at each edge of the list
+  final PageController _pageController = PageController(viewportFraction: 0.82);
   final Map<String, Uint8List> _videoThumbnailCache = {};
   final Map<String, Uint8List> _imageThumbnailCache = {};
   final List<String> _imageThumbnailOrder = [];
@@ -158,6 +159,11 @@ class _SwipeScreenState extends State<SwipeScreen> {
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
+    } else {
+      // Last item decided — auto-finish after the snap-back animation settles
+      Future.delayed(const Duration(milliseconds: 400), () {
+        if (mounted) _finishReview();
+      });
     }
   }
 
@@ -231,72 +237,51 @@ class _SwipeScreenState extends State<SwipeScreen> {
             ),
           ),
           Expanded(
-            child: Stack(
-              children: [
-                PageView.builder(
-                  controller: _pageController,
-                  scrollDirection: Axis.vertical,
-                  physics: const BouncingScrollPhysics(),
-                  itemCount: widget.media.length,
-                  onPageChanged: (index) {
-                    setState(() => _currentIndex = index);
-                    _preloadNextItem(index);
-                    if (index + 1 < widget.media.length) _preloadNextItem(index + 1);
-                  },
-                  itemBuilder: (context, index) {
-                    final mediaItem = widget.media[index];
-                    final aspectRatio = mediaItem.width / mediaItem.height;
-                    final maxWidth = MediaQuery.of(context).size.width - 40;
-                    final heightMultiplier = Platform.isAndroid ? 0.55 : 0.6;
-                    final maxHeight = MediaQuery.of(context).size.height * heightMultiplier;
-
-                    double cardWidth;
-                    double cardHeight;
-                    if (aspectRatio > maxWidth / maxHeight) {
-                      cardWidth = maxWidth;
-                      cardHeight = cardWidth / aspectRatio;
-                    } else {
-                      cardHeight = maxHeight;
-                      cardWidth = cardHeight * aspectRatio;
-                    }
-
-                    return Center(
-                      child: SizedBox(
-                        width: cardWidth,
-                        height: cardHeight,
-                        child: ReviewCard(
-                          key: ValueKey('${mediaItem.id}_$index'),
-                          mediaItem: mediaItem,
-                          cachedThumbnail: mediaItem.isVideo
-                              ? _videoThumbnailCache[mediaItem.id]
-                              : _imageThumbnailCache[mediaItem.id],
-                          decision: _decisions[mediaItem.id],
-                          onDecide: (keep) => _decide(index, keep),
+            child: PageView.builder(
+              controller: _pageController,
+              scrollDirection: Axis.vertical,
+              physics: const BouncingScrollPhysics(),
+              itemCount: widget.media.length,
+              onPageChanged: (index) {
+                setState(() => _currentIndex = index);
+                _preloadNextItem(index);
+                if (index + 1 < widget.media.length) _preloadNextItem(index + 1);
+              },
+              itemBuilder: (context, index) {
+                final mediaItem = widget.media[index];
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 20),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final aspectRatio = mediaItem.width / mediaItem.height;
+                      double cardWidth;
+                      double cardHeight;
+                      if (aspectRatio > constraints.maxWidth / constraints.maxHeight) {
+                        cardWidth = constraints.maxWidth;
+                        cardHeight = cardWidth / aspectRatio;
+                      } else {
+                        cardHeight = constraints.maxHeight;
+                        cardWidth = cardHeight * aspectRatio;
+                      }
+                      return Center(
+                        child: SizedBox(
+                          width: cardWidth,
+                          height: cardHeight,
+                          child: ReviewCard(
+                            key: ValueKey('${mediaItem.id}_$index'),
+                            mediaItem: mediaItem,
+                            cachedThumbnail: mediaItem.isVideo
+                                ? _videoThumbnailCache[mediaItem.id]
+                                : _imageThumbnailCache[mediaItem.id],
+                            decision: _decisions[mediaItem.id],
+                            onDecide: (keep) => _decide(index, keep),
+                          ),
                         ),
-                      ),
-                    );
-                  },
-                ),
-                // Navigation hints
-                if (_currentIndex > 0)
-                  const Positioned(
-                    top: 4,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: Icon(Icons.keyboard_arrow_up, color: Colors.black38, size: 28),
-                    ),
+                      );
+                    },
                   ),
-                if (_currentIndex < widget.media.length - 1)
-                  const Positioned(
-                    bottom: 4,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: Icon(Icons.keyboard_arrow_down, color: Colors.black38, size: 28),
-                    ),
-                  ),
-              ],
+                );
+              },
             ),
           ),
           SafeArea(

@@ -29,11 +29,18 @@ class _DeletionConfirmationScreenState
     extends State<DeletionConfirmationScreen> {
   final Set<String> _selectedIds = {};
   bool _isDeleting = false;
+  Map<String, int> _fileSizes = {};
+  bool _sizesReady = false;
 
   @override
   void initState() {
     super.initState();
     _selectedIds.addAll(widget.mediaToDelete.map((item) => item.id));
+    // Precompute file sizes in the background so _handleDelete doesn't block
+    // waiting for iCloud downloads when the user eventually taps Delete.
+    PhotoService.getFileSizes(widget.mediaToDelete).then((sizes) {
+      if (mounted) setState(() { _fileSizes = sizes; _sizesReady = true; });
+    });
   }
 
   void _toggleSelection(MediaItem item) {
@@ -96,8 +103,10 @@ class _DeletionConfirmationScreenState
       int videoStorageBytes = 0;
 
       try {
-        // Get file sizes in parallel for speed (before deletion)
-        final fileSizes = await PhotoService.getFileSizes(itemsToDelete);
+        // Use precomputed sizes (fetched in initState); fall back if not ready yet.
+        final fileSizes = _sizesReady
+            ? _fileSizes
+            : await PhotoService.getFileSizes(itemsToDelete);
         for (final item in itemsToDelete) {
           final size = fileSizes[item.id] ?? 0;
           if (item.isVideo) {
