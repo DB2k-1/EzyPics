@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../models/media_item.dart';
 import '../services/photo_service.dart';
@@ -13,7 +12,7 @@ import '../utils/date_utils.dart';
 import '../utils/performance_logger.dart';
 import '../widgets/logo_widget.dart';
 import '../widgets/year_preview_card.dart';
-import '../widgets/swipe_card.dart';
+import '../widgets/review_card.dart';
 
 class CarouselScreen extends StatefulWidget {
   const CarouselScreen({super.key});
@@ -42,8 +41,9 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
   bool _isComplete = false;
   bool _reviewEndTriggered = false;
   List<MediaItem> _reviewMedia = [];
-  final List<MediaItem> _mediaToDelete = [];
-  final CardSwiperController _swiperController = CardSwiperController();
+  /// false = delete, true = keep. Absent = undecided (treated as keep on finish).
+  final Map<String, bool> _reviewDecisions = {};
+  final PageController _reviewPageController = PageController();
   final Map<String, Uint8List> _videoThumbnailCache = {};
   final Map<String, Uint8List> _imageThumbnailCache = {};
   final List<String> _imageThumbnailOrder = [];
@@ -86,7 +86,7 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     _galleryTimer?.cancel();
     _diskCacheCleanupTimer?.cancel();
     _fadeController?.dispose();
-    _swiperController.dispose();
+    _reviewPageController.dispose();
     _batchUpdateTimer?.cancel();
     _videoThumbnailCache.clear();
     _imageThumbnailCache.clear();
@@ -398,7 +398,7 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
         _isComplete = false;
         _reviewEndTriggered = false;
         _currentIndex = 0;
-        _mediaToDelete.clear();
+        _reviewDecisions.clear();
       });
     }
   }
@@ -559,71 +559,39 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     }
   }
   
-  Future<bool> _onSwipe(int previousIndex, int? currentIndex, CardSwiperDirection direction) async {
-    PerformanceLogger.start('on_swipe');
-    final swipedMedia = _reviewMedia[previousIndex];
-    final wasVideo = swipedMedia.isVideo;
-    
-    if (direction == CardSwiperDirection.left) {
-      _mediaToDelete.add(swipedMedia);
-    }
-    
-    final newIndex = currentIndex ?? (previousIndex + 1);
-    
-    // Preload next item immediately (before setState) to start loading in parallel
-    if (newIndex < _reviewMedia.length) {
-      // Don't await - let it run in background
-      _preloadNextItem(newIndex);
-    }
-    
+  void _decideCurrentItem(bool keep) {
+    if (_currentIndex >= _reviewMedia.length) return;
+    final item = _reviewMedia[_currentIndex];
     setState(() {
-      _currentIndex = newIndex;
+      _reviewDecisions[item.id] = keep;
     });
-    
-    // Also preload the item after next (lookahead) for smoother transitions
-    if (newIndex + 1 < _reviewMedia.length) {
-      _preloadNextItem(newIndex + 1);
+    if (_currentIndex + 1 < _reviewMedia.length) {
+      _reviewPageController.nextPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
     }
-    
-    PerformanceLogger.end('on_swipe', threshold: const Duration(milliseconds: 100));
-    if (wasVideo) {
-      PerformanceLogger.log('Swiped away video, next item: ${newIndex < _reviewMedia.length ? _reviewMedia[newIndex].isVideo ? "video" : "image" : "none"}', level: 'info');
-    }
-    
-    if (newIndex >= _reviewMedia.length) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _onReviewEnd();
-        }
-      });
-    }
-    
-    return true;
   }
-  
+
   void _onReviewEnd() {
-    // Prevent multiple calls
     if (_reviewEndTriggered || !mounted) return;
     _reviewEndTriggered = true;
-    
-    // Transition to completion state first (keeps header persistent)
-    setState(() {
-      _isComplete = true;
-    });
-    
-    // Navigate after a brief delay to allow smooth transition
+
+    setState(() => _isComplete = true);
+
     Future.delayed(const Duration(milliseconds: 500), () {
       if (!mounted) return;
-      
+
+      final toDelete = _reviewMedia.where((m) => _reviewDecisions[m.id] == false).toList();
+
       try {
-        if (_mediaToDelete.isEmpty) {
+        if (toDelete.isEmpty) {
           Navigator.of(context).pushReplacementNamed('/home');
         } else {
-          // Navigate to deletion confirmation with cached thumbnails
           Navigator.of(context).pushReplacementNamed(
             '/deletion-confirmation',
             arguments: {
-              'mediaToDelete': _mediaToDelete,
+              'mediaToDelete': toDelete,
               'videoThumbnailCache': _videoThumbnailCache,
               'imageThumbnailCache': _imageThumbnailCache,
             },
@@ -632,7 +600,6 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
       } catch (e) {
         PerformanceLogger.log('Error navigating after review: $e', level: 'error');
         print('Error navigating after review: $e');
-        // Fallback: try navigating to home
         try {
           Navigator.of(context).pushReplacementNamed('/home');
         } catch (e2) {
@@ -641,13 +608,9 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
       }
     });
   }
-  
-  void _handleButtonSwipe(String direction) {
-    if (direction == 'left') {
-      _swiperController.swipe(CardSwiperDirection.left);
-    } else if (direction == 'right') {
-      _swiperController.swipe(CardSwiperDirection.right);
-    }
+
+  void _handleButtonDecide(bool keep) {
+    _decideCurrentItem(keep);
   }
 
   Future<void> _handleShare(MediaItem mediaItem) async {
@@ -797,7 +760,7 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     }
 
     final currentMedia = _reviewMedia[_currentIndex];
-    final progress = ((_currentIndex + 1) / _reviewMedia.length) * 100;
+    final decidedCount = _reviewDecisions.length;
 
     return Column(
       key: const ValueKey('review'),
@@ -809,10 +772,7 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
             children: [
               Text(
                 AppDateUtils.formatDateForDisplay(_selectedDateKey, year: currentMedia.year),
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
               ),
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -821,7 +781,7 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
                     '${_currentIndex + 1} of ${_reviewMedia.length}',
                     style: const TextStyle(fontSize: 16),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 4),
                   GestureDetector(
                     onTap: () => _handleShare(currentMedia),
                     child: Icon(
@@ -830,106 +790,125 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
                       color: Colors.black87,
                     ),
                   ),
+                  const SizedBox(width: 4),
+                  TextButton(
+                    onPressed: _onReviewEnd,
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.blue,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text(
+                      'Done',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                  ),
                 ],
               ),
             ],
           ),
         ),
         Expanded(
-          child: CardSwiper(
-            controller: _swiperController,
-            cardsCount: _reviewMedia.length,
-            allowedSwipeDirection: const AllowedSwipeDirection.only(
-              left: true,
-              right: true,
-            ),
-            threshold: 50,
-            maxAngle: 30,
-            duration: const Duration(milliseconds: 200),
-            scale: 0.9,
-            numberOfCardsDisplayed: 1,
-            isLoop: false,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 25),
-            onSwipe: _onSwipe,
-            onEnd: _onReviewEnd,
-            cardBuilder: (context, index, percentThresholdX, percentThresholdY) {
-              if (index >= _reviewMedia.length) {
-                return const SizedBox.shrink();
-              }
-              
-              if (index < _currentIndex) {
-                return const SizedBox.shrink();
-              }
-              
-              final mediaItem = _reviewMedia[index];
-              final aspectRatio = mediaItem.width / mediaItem.height;
-              final maxWidth = MediaQuery.of(context).size.width - 40;
-              // Reduce height on Android to account for system navigation controls
-              final heightMultiplier = Platform.isAndroid ? 0.55 : 0.6;
-              final maxHeight = MediaQuery.of(context).size.height * heightMultiplier;
-              
-              double cardWidth;
-              double cardHeight;
-              
-              if (aspectRatio > maxWidth / maxHeight) {
-                cardWidth = maxWidth;
-                cardHeight = cardWidth / aspectRatio;
-              } else {
-                cardHeight = maxHeight;
-                cardWidth = cardHeight * aspectRatio;
-              }
-              
-              return Center(
-                child: SizedBox(
-                  width: cardWidth,
-                  height: cardHeight,
-                  child: SwipeCard(
-                    key: ValueKey('${mediaItem.id}_$index'),
-                    mediaItem: mediaItem,
-                    cachedThumbnail: mediaItem.isVideo 
-                        ? _videoThumbnailCache[mediaItem.id]
-                        : _imageThumbnailCache[mediaItem.id],
+          child: Stack(
+            children: [
+              PageView.builder(
+                controller: _reviewPageController,
+                scrollDirection: Axis.vertical,
+                physics: const BouncingScrollPhysics(),
+                itemCount: _reviewMedia.length,
+                onPageChanged: (index) {
+                  setState(() => _currentIndex = index);
+                  _preloadNextItem(index);
+                  if (index + 1 < _reviewMedia.length) _preloadNextItem(index + 1);
+                },
+                itemBuilder: (context, index) {
+                  final mediaItem = _reviewMedia[index];
+                  final aspectRatio = mediaItem.width / mediaItem.height;
+                  final maxWidth = MediaQuery.of(context).size.width - 40;
+                  final heightMultiplier = Platform.isAndroid ? 0.55 : 0.6;
+                  final maxHeight = MediaQuery.of(context).size.height * heightMultiplier;
+
+                  double cardWidth;
+                  double cardHeight;
+                  if (aspectRatio > maxWidth / maxHeight) {
+                    cardWidth = maxWidth;
+                    cardHeight = cardWidth / aspectRatio;
+                  } else {
+                    cardHeight = maxHeight;
+                    cardWidth = cardHeight * aspectRatio;
+                  }
+
+                  return Center(
+                    child: SizedBox(
+                      width: cardWidth,
+                      height: cardHeight,
+                      child: ReviewCard(
+                        key: ValueKey('${mediaItem.id}_$index'),
+                        mediaItem: mediaItem,
+                        cachedThumbnail: mediaItem.isVideo
+                            ? _videoThumbnailCache[mediaItem.id]
+                            : _imageThumbnailCache[mediaItem.id],
+                        decision: _reviewDecisions[mediaItem.id],
+                        onDecide: (keep) {
+                          setState(() => _reviewDecisions[mediaItem.id] = keep);
+                          if (index + 1 < _reviewMedia.length) {
+                            _reviewPageController.nextPage(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOut,
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  );
+                },
+              ),
+              // Navigation hints
+              if (_currentIndex > 0)
+                const Positioned(
+                  top: 4,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Icon(Icons.keyboard_arrow_up, color: Colors.black38, size: 28),
                   ),
                 ),
-              );
-            },
+              if (_currentIndex < _reviewMedia.length - 1)
+                const Positioned(
+                  bottom: 4,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Icon(Icons.keyboard_arrow_down, color: Colors.black38, size: 28),
+                  ),
+                ),
+            ],
           ),
         ),
-        // Bottom controls with Android-safe padding
         SafeArea(
           top: false,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Padding(
-                padding: EdgeInsets.fromLTRB(
-                  40,
-                  20,
-                  40,
-                  Platform.isAndroid ? 8 : 20,
-                ),
+                padding: EdgeInsets.fromLTRB(40, 16, 40, Platform.isAndroid ? 8 : 16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     ElevatedButton(
-                      onPressed: () => _handleButtonSwipe('left'),
+                      onPressed: () => _handleButtonDecide(false),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.red,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 40,
-                          vertical: 15,
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
                       ),
                       child: const Text('❌ Delete', style: TextStyle(fontSize: 18)),
                     ),
                     ElevatedButton(
-                      onPressed: () => _handleButtonSwipe('right'),
+                      onPressed: () => _handleButtonDecide(true),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 40,
-                          vertical: 15,
-                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
                       ),
                       child: const Text('✅ Keep', style: TextStyle(fontSize: 18)),
                     ),
@@ -937,15 +916,19 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
                 ),
               ),
               Padding(
-                padding: EdgeInsets.fromLTRB(
-                  20.0,
-                  0,
-                  20.0,
-                  Platform.isAndroid ? 8.0 : 20.0,
-                ),
-                child: LinearProgressIndicator(
-                  value: progress / 100,
-                  minHeight: 4,
+                padding: EdgeInsets.fromLTRB(20, 0, 20, Platform.isAndroid ? 8.0 : 16.0),
+                child: Column(
+                  children: [
+                    LinearProgressIndicator(
+                      value: decidedCount / _reviewMedia.length,
+                      minHeight: 4,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$decidedCount of ${_reviewMedia.length} reviewed',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -976,9 +959,9 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
           ),
           const SizedBox(height: 8),
           Text(
-            _mediaToDelete.isEmpty
+            _reviewDecisions.values.where((v) => !v).isEmpty
                 ? 'No items marked for deletion'
-                : '${_mediaToDelete.length} item${_mediaToDelete.length == 1 ? '' : 's'} marked for deletion',
+                : '${_reviewDecisions.values.where((v) => !v).length} item${_reviewDecisions.values.where((v) => !v).length == 1 ? '' : 's'} marked for deletion',
             style: const TextStyle(
               fontSize: 16,
               color: Colors.grey,

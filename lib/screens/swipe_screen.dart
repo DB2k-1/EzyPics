@@ -2,13 +2,12 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'package:photo_manager/photo_manager.dart';
 import '../models/media_item.dart';
 import '../utils/cache_cleanup.dart';
 import '../utils/date_utils.dart';
 import '../widgets/logo_widget.dart';
-import '../widgets/swipe_card.dart';
+import '../widgets/review_card.dart';
 
 class SwipeScreen extends StatefulWidget {
   final String dateKey;
@@ -25,8 +24,9 @@ class SwipeScreen extends StatefulWidget {
 }
 
 class _SwipeScreenState extends State<SwipeScreen> {
-  final List<MediaItem> _mediaToDelete = [];
-  final CardSwiperController _swiperController = CardSwiperController();
+  /// false = delete, true = keep. Absent = undecided (treated as keep on finish).
+  final Map<String, bool> _decisions = {};
+  final PageController _pageController = PageController();
   final Map<String, Uint8List> _videoThumbnailCache = {};
   final Map<String, Uint8List> _imageThumbnailCache = {};
   final List<String> _imageThumbnailOrder = [];
@@ -39,20 +39,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
   @override
   void initState() {
     super.initState();
-    final videos = widget.media.where((m) => m.isVideo).toList();
-    final photos = widget.media.where((m) => !m.isVideo).toList();
-    print('SwipeScreen initState: Total media=${widget.media.length}, Videos=${videos.length}, Photos=${photos.length}');
-    for (final item in widget.media) {
-      print('SwipeScreen initState: Item - isVideo: ${item.isVideo}, ID: ${item.id}');
-    }
-    
-    // Preload thumbnails for all videos and images in the background
     _preloadVideoThumbnails();
     _preloadImageThumbnails();
-    
-    // Preload the first item's file
     _preloadNextItem(0);
-    // Cap "Documents & Data" during long review: clear disk caches every 2 min
     _diskCacheCleanupTimer = Timer.periodic(
       const Duration(minutes: 2),
       (_) => CacheCleanup.clearAllDiskCaches(),
@@ -66,49 +55,36 @@ class _SwipeScreenState extends State<SwipeScreen> {
     _imageThumbnailCache.clear();
     _imageThumbnailOrder.clear();
     _videoThumbnailOrder.clear();
-    _swiperController.dispose();
+    _pageController.dispose();
     CacheCleanup.clearImageCache();
-    CacheCleanup.clearAllDiskCaches(); // Free disk so "Documents & Data" doesn't stay high
+    CacheCleanup.clearAllDiskCaches();
     super.dispose();
   }
-  
+
   Future<void> _preloadVideoThumbnails() async {
-    // Preload thumbnails for all videos in parallel
     final videoItems = widget.media.where((m) => m.isVideo).toList();
-    print('Preloading thumbnails for ${videoItems.length} videos...');
-    
     for (final item in videoItems) {
-      // Skip if already cached
       if (_videoThumbnailCache.containsKey(item.id)) continue;
-      
-      // Load thumbnail in background
       _loadVideoThumbnail(item.id);
     }
   }
-  
+
   Future<void> _preloadImageThumbnails() async {
-    // Preload thumbnails for all images in parallel
     final imageItems = widget.media.where((m) => !m.isVideo).toList();
-    print('Preloading thumbnails for ${imageItems.length} images...');
-    
-    // Load thumbnails in parallel batches
     final futures = imageItems.map((item) async {
       if (_imageThumbnailCache.containsKey(item.id)) return;
       await _loadImageThumbnail(item.id);
     });
-    
-    // Process in batches of 5 to avoid overwhelming the system
     for (int i = 0; i < futures.length; i += 5) {
       final batch = futures.skip(i).take(5).toList();
       await Future.wait(batch);
     }
   }
-  
+
   Future<void> _loadImageThumbnail(String mediaId) async {
     try {
       final asset = await AssetEntity.fromId(mediaId);
       if (asset == null) return;
-      
       final mediaItem = widget.media.firstWhere((item) => item.id == mediaId);
       int thumbWidth;
       int thumbHeight;
@@ -119,70 +95,53 @@ class _SwipeScreenState extends State<SwipeScreen> {
         thumbHeight = _kMaxThumbnailDimension;
         thumbWidth = (_kMaxThumbnailDimension * mediaItem.width / mediaItem.height).round();
       }
-      final thumbnail = await asset.thumbnailDataWithSize(
-        ThumbnailSize(thumbWidth, thumbHeight),
-      );
-      
+      final thumbnail = await asset.thumbnailDataWithSize(ThumbnailSize(thumbWidth, thumbHeight));
       if (thumbnail != null && mounted) {
         setState(() {
           _imageThumbnailCache[mediaId] = thumbnail;
           _imageThumbnailOrder.add(mediaId);
           while (_imageThumbnailCache.length > _kMaxThumbnailCacheSize &&
               _imageThumbnailOrder.isNotEmpty) {
-            final evict = _imageThumbnailOrder.removeAt(0);
-            _imageThumbnailCache.remove(evict);
+            _imageThumbnailCache.remove(_imageThumbnailOrder.removeAt(0));
           }
         });
-        print('Cached thumbnail for image: $mediaId (${thumbWidth}x${thumbHeight})');
       }
     } catch (e) {
-      print('Error preloading image thumbnail for $mediaId: $e');
+      print('Error loading image thumbnail for $mediaId: $e');
     }
   }
-  
+
   Future<void> _loadVideoThumbnail(String mediaId) async {
     try {
       final asset = await AssetEntity.fromId(mediaId);
       if (asset == null) return;
-      
-      final thumbnail = await asset.thumbnailDataWithSize(
-        const ThumbnailSize(480, 480),
-      );
-      
+      final thumbnail = await asset.thumbnailDataWithSize(const ThumbnailSize(480, 480));
       if (thumbnail != null && mounted) {
         setState(() {
           _videoThumbnailCache[mediaId] = thumbnail;
           _videoThumbnailOrder.add(mediaId);
           while (_videoThumbnailCache.length > _kMaxThumbnailCacheSize &&
               _videoThumbnailOrder.isNotEmpty) {
-            final evict = _videoThumbnailOrder.removeAt(0);
-            _videoThumbnailCache.remove(evict);
+            _videoThumbnailCache.remove(_videoThumbnailOrder.removeAt(0));
           }
         });
-        print('Cached thumbnail for video: $mediaId');
       }
     } catch (e) {
-      print('Error preloading video thumbnail for $mediaId: $e');
+      print('Error loading video thumbnail for $mediaId: $e');
     }
   }
-  
+
   Future<void> _preloadNextItem(int index) async {
     if (index >= widget.media.length) return;
-    
     final item = widget.media[index];
     try {
-      // Preload the file by getting it (photo_manager will cache it)
       final asset = await AssetEntity.fromId(item.id);
       if (asset != null && !item.isVideo) {
-        // For images, preload the file to warm the cache
         await asset.file;
-        // Also ensure thumbnail is cached
         if (!_imageThumbnailCache.containsKey(item.id)) {
           _loadImageThumbnail(item.id);
         }
-        print('Preloaded file for item $index');
       } else if (asset != null && item.isVideo && !_videoThumbnailCache.containsKey(item.id)) {
-        // For videos, ensure thumbnail is cached
         _loadVideoThumbnail(item.id);
       }
     } catch (e) {
@@ -190,51 +149,27 @@ class _SwipeScreenState extends State<SwipeScreen> {
     }
   }
 
-  Future<bool> _onSwipe(int previousIndex, int? currentIndex, CardSwiperDirection direction) async {
-    final swipedMedia = widget.media[previousIndex];
-    
-    // Determine swipe direction
-    if (direction == CardSwiperDirection.left) {
-      // Swipe left = delete
-      _mediaToDelete.add(swipedMedia);
-    }
-    // Swipe right = keep (do nothing)
-    
-    // Update current index
-    final newIndex = currentIndex ?? (previousIndex + 1);
+  void _decide(int index, bool keep) {
     setState(() {
-      _currentIndex = newIndex;
+      _decisions[widget.media[index].id] = keep;
     });
-    
-    // Preload next item in background
-    if (newIndex < widget.media.length) {
-      _preloadNextItem(newIndex);
+    if (index + 1 < widget.media.length) {
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
     }
-    
-    // Check if we've reached the end
-    if (newIndex >= widget.media.length) {
-      // All cards swiped, navigate immediately
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _onEnd();
-        }
-      });
-    }
-    
-    return true; // Allow the swipe
   }
 
-  void _onEnd() {
-    // All cards swiped
-    if (_mediaToDelete.isEmpty) {
-      // No items to delete, go to home screen
+  void _finishReview() {
+    final toDelete = widget.media.where((m) => _decisions[m.id] == false).toList();
+    if (toDelete.isEmpty) {
       Navigator.of(context).pushReplacementNamed('/home');
     } else {
-      // Navigate to deletion confirmation with cached thumbnails
       Navigator.of(context).pushReplacementNamed(
         '/deletion-confirmation',
         arguments: {
-          'mediaToDelete': _mediaToDelete,
+          'mediaToDelete': toDelete,
           'videoThumbnailCache': _videoThumbnailCache,
           'imageThumbnailCache': _imageThumbnailCache,
         },
@@ -242,27 +177,18 @@ class _SwipeScreenState extends State<SwipeScreen> {
     }
   }
 
-  void _handleButtonSwipe(String direction) {
-    if (direction == 'left') {
-      _swiperController.swipe(CardSwiperDirection.left);
-    } else if (direction == 'right') {
-      _swiperController.swipe(CardSwiperDirection.right);
-    }
+  void _handleButtonDecide(bool keep) {
+    _decide(_currentIndex, keep);
   }
 
   @override
   Widget build(BuildContext context) {
     if (widget.media.isEmpty) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     final currentMedia = widget.media[_currentIndex];
-    print('SwipeScreen: Showing item ${_currentIndex + 1}/${widget.media.length}');
-    print('SwipeScreen: Media type - isVideo: ${currentMedia.isVideo}, ID: ${currentMedia.id}');
-    print('SwipeScreen: Total media breakdown - Photos: ${widget.media.where((m) => !m.isVideo).length}, Videos: ${widget.media.where((m) => m.isVideo).length}');
-    final progress = ((_currentIndex + 1) / widget.media.length) * 100;
+    final decidedCount = _decisions.length;
 
     return Scaffold(
       body: Column(
@@ -277,119 +203,125 @@ class _SwipeScreenState extends State<SwipeScreen> {
               children: [
                 Text(
                   AppDateUtils.formatDateForDisplay(widget.dateKey, year: currentMedia.year),
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                 ),
-                Text(
-                  '${_currentIndex + 1} of ${widget.media.length}',
-                  style: const TextStyle(fontSize: 16),
+                Row(
+                  children: [
+                    Text(
+                      '${_currentIndex + 1} of ${widget.media.length}',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                    const SizedBox(width: 4),
+                    TextButton(
+                      onPressed: _finishReview,
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.blue,
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text(
+                        'Done',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
           Expanded(
-            child: CardSwiper(
-              controller: _swiperController,
-              cardsCount: widget.media.length,
-              allowedSwipeDirection: const AllowedSwipeDirection.only(
-                left: true,
-                right: true,
-              ),
-              threshold: 50,
-              maxAngle: 30,
-              duration: const Duration(milliseconds: 200),
-              scale: 0.9,
-              numberOfCardsDisplayed: 1, // Only show one card at a time to prevent ghost cards
-              isLoop: false, // Don't loop - prevent cards from reappearing
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 25),
-              onSwipe: _onSwipe,
-              onEnd: _onEnd,
-              cardBuilder: (context, index, percentThresholdX, percentThresholdY) {
-                if (index >= widget.media.length) {
-                  return const SizedBox.shrink();
-                }
-                
-                // Only build the card if it's the current index or hasn't been swiped yet
-                // This prevents building cards that are already swiped away
-                if (index < _currentIndex) {
-                  return const SizedBox.shrink();
-                }
-                
-                final mediaItem = widget.media[index];
-                // Calculate aspect ratio
-                final aspectRatio = mediaItem.width / mediaItem.height;
-                final maxWidth = MediaQuery.of(context).size.width - 40;
-                // Reduce height on Android to account for system navigation controls
-                final heightMultiplier = Platform.isAndroid ? 0.55 : 0.6;
-                final maxHeight = MediaQuery.of(context).size.height * heightMultiplier;
-                
-                // Calculate actual dimensions maintaining aspect ratio
-                double cardWidth;
-                double cardHeight;
-                
-                if (aspectRatio > maxWidth / maxHeight) {
-                  // Media is wider - fit to width
-                  cardWidth = maxWidth;
-                  cardHeight = cardWidth / aspectRatio;
-                } else {
-                  // Media is taller - fit to height
-                  cardHeight = maxHeight;
-                  cardWidth = cardHeight * aspectRatio;
-                }
-                
-                return Center(
-                  child: SizedBox(
-                    width: cardWidth,
-                    height: cardHeight,
-                    child: SwipeCard(
-                      key: ValueKey('${mediaItem.id}_$index'), // Include index to force rebuild
-                      mediaItem: mediaItem,
-                      cachedThumbnail: mediaItem.isVideo 
-                          ? _videoThumbnailCache[mediaItem.id]
-                          : _imageThumbnailCache[mediaItem.id],
+            child: Stack(
+              children: [
+                PageView.builder(
+                  controller: _pageController,
+                  scrollDirection: Axis.vertical,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: widget.media.length,
+                  onPageChanged: (index) {
+                    setState(() => _currentIndex = index);
+                    _preloadNextItem(index);
+                    if (index + 1 < widget.media.length) _preloadNextItem(index + 1);
+                  },
+                  itemBuilder: (context, index) {
+                    final mediaItem = widget.media[index];
+                    final aspectRatio = mediaItem.width / mediaItem.height;
+                    final maxWidth = MediaQuery.of(context).size.width - 40;
+                    final heightMultiplier = Platform.isAndroid ? 0.55 : 0.6;
+                    final maxHeight = MediaQuery.of(context).size.height * heightMultiplier;
+
+                    double cardWidth;
+                    double cardHeight;
+                    if (aspectRatio > maxWidth / maxHeight) {
+                      cardWidth = maxWidth;
+                      cardHeight = cardWidth / aspectRatio;
+                    } else {
+                      cardHeight = maxHeight;
+                      cardWidth = cardHeight * aspectRatio;
+                    }
+
+                    return Center(
+                      child: SizedBox(
+                        width: cardWidth,
+                        height: cardHeight,
+                        child: ReviewCard(
+                          key: ValueKey('${mediaItem.id}_$index'),
+                          mediaItem: mediaItem,
+                          cachedThumbnail: mediaItem.isVideo
+                              ? _videoThumbnailCache[mediaItem.id]
+                              : _imageThumbnailCache[mediaItem.id],
+                          decision: _decisions[mediaItem.id],
+                          onDecide: (keep) => _decide(index, keep),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                // Navigation hints
+                if (_currentIndex > 0)
+                  const Positioned(
+                    top: 4,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: Icon(Icons.keyboard_arrow_up, color: Colors.black38, size: 28),
                     ),
                   ),
-                );
-              },
+                if (_currentIndex < widget.media.length - 1)
+                  const Positioned(
+                    bottom: 4,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: Icon(Icons.keyboard_arrow_down, color: Colors.black38, size: 28),
+                    ),
+                  ),
+              ],
             ),
           ),
-          // Bottom controls with Android-safe padding
           SafeArea(
             top: false,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    40,
-                    20,
-                    40,
-                    Platform.isAndroid ? 8 : 20,
-                  ),
+                  padding: EdgeInsets.fromLTRB(40, 16, 40, Platform.isAndroid ? 8 : 16),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
                       ElevatedButton(
-                        onPressed: () => _handleButtonSwipe('left'),
+                        onPressed: () => _handleButtonDecide(false),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.red,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 40,
-                            vertical: 15,
-                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
                         ),
                         child: const Text('❌ Delete', style: TextStyle(fontSize: 18)),
                       ),
                       ElevatedButton(
-                        onPressed: () => _handleButtonSwipe('right'),
+                        onPressed: () => _handleButtonDecide(true),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 40,
-                            vertical: 15,
-                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
                         ),
                         child: const Text('✅ Keep', style: TextStyle(fontSize: 18)),
                       ),
@@ -397,15 +329,19 @@ class _SwipeScreenState extends State<SwipeScreen> {
                   ),
                 ),
                 Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    20.0,
-                    0,
-                    20.0,
-                    Platform.isAndroid ? 8.0 : 20.0,
-                  ),
-                  child: LinearProgressIndicator(
-                    value: progress / 100,
-                    minHeight: 4,
+                  padding: EdgeInsets.fromLTRB(20, 0, 20, Platform.isAndroid ? 8.0 : 16.0),
+                  child: Column(
+                    children: [
+                      LinearProgressIndicator(
+                        value: decidedCount / widget.media.length,
+                        minHeight: 4,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '$decidedCount of ${widget.media.length} reviewed',
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
                   ),
                 ),
               ],
