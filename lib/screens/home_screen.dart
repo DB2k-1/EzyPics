@@ -162,7 +162,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   Text(
                                     _isPreparingReview ? 'Preparing…' : 'Review Media',
                                     style: const TextStyle(
-                                      fontSize: 18,
+                                      fontSize: 22,
                                       fontWeight: FontWeight.w600,
                                       color: Colors.black87,
                                     ),
@@ -174,7 +174,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           const SizedBox(height: 16),
                           // Streak card
                           Card(
-                            elevation: 4,
+                            elevation: 2,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             child: Padding(
                               padding: const EdgeInsets.all(12.0),
