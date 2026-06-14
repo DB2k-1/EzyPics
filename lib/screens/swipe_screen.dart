@@ -6,6 +6,7 @@ import 'package:photo_manager/photo_manager.dart';
 import '../models/media_item.dart';
 import '../utils/cache_cleanup.dart';
 import '../utils/date_utils.dart';
+import '../services/streak_service.dart';
 import '../widgets/logo_widget.dart';
 import '../widgets/review_card.dart';
 
@@ -208,8 +209,10 @@ class _SwipeScreenState extends State<SwipeScreen> {
     if (proceed == true && mounted) _finishReview();
   }
 
-  void _finishReview() {
+  Future<void> _finishReview() async {
+    await StreakService.recordUsage();
     final toDelete = widget.media.where((m) => _decisions[m.id] == false).toList();
+    if (!mounted) return;
     if (toDelete.isEmpty) {
       Navigator.of(context).pushReplacementNamed('/home');
     } else {

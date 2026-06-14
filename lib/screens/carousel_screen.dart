@@ -7,6 +7,7 @@ import 'package:photo_manager/photo_manager.dart';
 import '../models/media_item.dart';
 import '../services/photo_service.dart';
 import '../services/share_service.dart';
+import '../services/streak_service.dart';
 import '../utils/cache_cleanup.dart';
 import '../utils/date_utils.dart';
 import '../utils/performance_logger.dart';
@@ -604,7 +605,11 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
 
     setState(() => _isComplete = true);
 
-    Future.delayed(const Duration(milliseconds: 500), () {
+    Future.delayed(const Duration(milliseconds: 500), () async {
+      if (!mounted) return;
+
+      await StreakService.recordUsage();
+
       if (!mounted) return;
 
       final toDelete = _reviewMedia.where((m) => _reviewDecisions[m.id] == false).toList();

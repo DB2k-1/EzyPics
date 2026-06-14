@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../models/media_item.dart';
+import '../services/notification_service.dart';
 import '../services/photo_service.dart';
+import '../services/streak_service.dart';
 import '../services/test_photo_generator.dart';
 import '../utils/date_utils.dart';
 import '../utils/cache_cleanup.dart';
@@ -21,10 +23,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
   DateTime _focusedDay = DateTime.now();
   int _selectDateTapCount = 0;
 
+  Set<String> _usageDates = {};
+  DateTime? _firstUseDate;
+
+  String _notifMode = 'random';
+  TimeOfDay _notifSetTime = const TimeOfDay(hour: 9, minute: 0);
+  TimeOfDay _notifRangeStart = const TimeOfDay(hour: 8, minute: 0);
+  TimeOfDay _notifRangeEnd = const TimeOfDay(hour: 22, minute: 0);
+
   @override
   void initState() {
     super.initState();
     _loadMediaMap();
+    _loadStreakData();
+    _loadNotifSettings();
+  }
+
+  Future<void> _loadStreakData() async {
+    final dates = await StreakService.getUsageDates();
+    final firstUse = await StreakService.getFirstUseDate();
+    if (mounted) {
+      setState(() {
+        _usageDates = dates;
+        _firstUseDate = firstUse;
+      });
+    }
+  }
+
+  Future<void> _loadNotifSettings() async {
+    final mode = await NotificationService.getMode();
+    final setTime = await NotificationService.getSetTime();
+    final rangeStart = await NotificationService.getRangeStart();
+    final rangeEnd = await NotificationService.getRangeEnd();
+    if (mounted) {
+      setState(() {
+        _notifMode = mode;
+        _notifSetTime = setTime;
+        _notifRangeStart = rangeStart;
+        _notifRangeEnd = rangeEnd;
+      });
+    }
   }
 
   Future<void> _loadMediaMap() async {
@@ -107,6 +145,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Widget? _buildCalendarCell(DateTime date, {required bool isBold, bool isOutside = false}) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final dayDate = DateTime(date.year, date.month, date.day);
+    final iso = StreakService.isoDate(date);
+
+    Color? ringColor;
+
+    if (_firstUseDate != null) {
+      final firstDay = DateTime(_firstUseDate!.year, _firstUseDate!.month, _firstUseDate!.day);
+      final yesterday = today.subtract(const Duration(days: 1));
+
+      if (!dayDate.isBefore(firstDay) && !dayDate.isAfter(today)) {
+        if (_usageDates.contains(iso)) {
+          ringColor = Colors.green;
+        } else if (!dayDate.isAfter(yesterday)) {
+          ringColor = Colors.red;
+        }
+      }
+    }
+
+    final textColor = isOutside ? Colors.grey[400] : null;
+
+    return Center(
+      child: Container(
+        width: 38,
+        height: 38,
+        decoration: ringColor != null
+            ? BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: ringColor, width: 2),
+              )
+            : null,
+        child: Center(
+          child: Text(
+            '${date.day}',
+            style: TextStyle(
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              color: textColor,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildCalendar() {
     final markedDates = _getMarkedDates();
     final now = DateTime.now();
@@ -145,11 +229,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
         },
       ),
       calendarBuilders: CalendarBuilders(
+        defaultBuilder: (context, date, focusedDay) =>
+            _buildCalendarCell(date, isBold: false),
+        todayBuilder: (context, date, focusedDay) =>
+            _buildCalendarCell(date, isBold: true),
+        outsideBuilder: (context, date, focusedDay) =>
+            _buildCalendarCell(date, isBold: false, isOutside: true),
         markerBuilder: (context, date, events) {
           final dateKey = AppDateUtils.getDateKey(date);
           final count = _getMediaCountForDateKey(dateKey);
           if (count == 0) return null;
-          
+
           // Simple blue circle marker
           return Positioned(
             bottom: 1,
@@ -212,16 +302,112 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 : SingleChildScrollView(
                     child: Padding(
                       padding: const EdgeInsets.all(16.0),
-                      child: Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(8.0),
-                          child: _buildCalendar(),
-                        ),
+                      child: Column(
+                        children: [
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: _buildCalendar(),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildNotifSettings(),
+                        ],
                       ),
                     ),
                   ),
           ),
         ],
+      ),
+    );
+  }
+
+  String _formatTimeOfDay(TimeOfDay t) {
+    final h = t.hour.toString().padLeft(2, '0');
+    final m = t.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  Future<void> _pickTime(
+    BuildContext context,
+    TimeOfDay initial,
+    Future<void> Function(TimeOfDay) onPicked,
+  ) async {
+    final picked = await showTimePicker(context: context, initialTime: initial);
+    if (picked != null) await onPicked(picked);
+  }
+
+  Widget _buildNotifSettings() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Reminders',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final entry in [
+                  ('off', 'Off'),
+                  ('random', 'Random'),
+                  ('setTime', 'Set Time'),
+                  ('timeRange', 'Time Range'),
+                ])
+                  ChoiceChip(
+                    label: Text(entry.$2),
+                    selected: _notifMode == entry.$1,
+                    onSelected: (_) async {
+                      await NotificationService.setMode(entry.$1);
+                      await NotificationService.requestPermission();
+                      await NotificationService.scheduleReminder();
+                      if (mounted) setState(() => _notifMode = entry.$1);
+                    },
+                  ),
+              ],
+            ),
+            if (_notifMode == 'setTime') ...[
+              const SizedBox(height: 12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text('Remind me at ${_formatTimeOfDay(_notifSetTime)}'),
+                trailing: const Icon(Icons.access_time),
+                onTap: () => _pickTime(context, _notifSetTime, (t) async {
+                  await NotificationService.setSetTime(t.hour, t.minute);
+                  await NotificationService.scheduleReminder();
+                  if (mounted) setState(() => _notifSetTime = t);
+                }),
+              ),
+            ],
+            if (_notifMode == 'timeRange') ...[
+              const SizedBox(height: 12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text('From ${_formatTimeOfDay(_notifRangeStart)}'),
+                trailing: const Icon(Icons.access_time),
+                onTap: () => _pickTime(context, _notifRangeStart, (t) async {
+                  await NotificationService.setRangeStart(t.hour, t.minute);
+                  await NotificationService.scheduleReminder();
+                  if (mounted) setState(() => _notifRangeStart = t);
+                }),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text('To ${_formatTimeOfDay(_notifRangeEnd)}'),
+                trailing: const Icon(Icons.access_time),
+                onTap: () => _pickTime(context, _notifRangeEnd, (t) async {
+                  await NotificationService.setRangeEnd(t.hour, t.minute);
+                  await NotificationService.scheduleReminder();
+                  if (mounted) setState(() => _notifRangeEnd = t);
+                }),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

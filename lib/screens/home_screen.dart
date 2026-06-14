@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/stats_service.dart';
+import '../services/streak_service.dart';
 import '../services/photo_service.dart';
 import '../utils/date_utils.dart';
 import '../utils/cache_cleanup.dart';
@@ -20,6 +21,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _videosDeleted = 0;
   int _photoStorageBytes = 0;
   int _videoStorageBytes = 0;
+  int _currentStreak = 0;
+  int _daysUsedThisYear = 0;
   bool _isLoading = true;
   bool _isPreparingReview = false;
 
@@ -49,13 +52,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final videos = await StatsService.getVideosDeleted();
     final photoStorage = await StatsService.getPhotoStorageRecovered();
     final videoStorage = await StatsService.getVideoStorageRecovered();
-    
+    final streak = await StreakService.getCurrentStreak();
+    final daysUsed = await StreakService.getDaysUsedThisYear();
+
     if (mounted) {
       setState(() {
         _photosDeleted = photos;
         _videosDeleted = videos;
         _photoStorageBytes = photoStorage;
         _videoStorageBytes = videoStorage;
+        _currentStreak = streak;
+        _daysUsedThisYear = daysUsed;
         _isLoading = false;
       });
     }
@@ -157,6 +164,113 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                     ),
                                   ),
                                 ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          // Streak card
+                          Card(
+                            elevation: 4,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12.0),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(Icons.local_fire_department, color: Colors.orange, size: 28),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      _currentStreak > 0
+                                          ? '$_currentStreak day streak'
+                                          : 'Start your streak!',
+                                      style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  Builder(
+                                    builder: (context) {
+                                      return IconButton(
+                                        icon: Icon(
+                                          Platform.isIOS ? CupertinoIcons.share : Icons.share,
+                                          color: Colors.orange,
+                                        ),
+                                        onPressed: () async {
+                                          final message =
+                                              "I'm on a $_currentStreak-day streak using EzyPics! Download it here:\nhttps://apps.apple.com/us/app/ezypics/id6757226178";
+                                          if (Platform.isIOS) {
+                                            final RenderBox? box =
+                                                context.findRenderObject() as RenderBox?;
+                                            if (box != null) {
+                                              final position = box.localToGlobal(Offset.zero);
+                                              final size = box.size;
+                                              try {
+                                                await Share.share(
+                                                  message,
+                                                  sharePositionOrigin: Rect.fromLTWH(
+                                                    position.dx,
+                                                    position.dy,
+                                                    size.width,
+                                                    size.height,
+                                                  ),
+                                                );
+                                              } catch (e) {
+                                                if (mounted) {
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(content: Text('Error sharing: $e')),
+                                                  );
+                                                }
+                                              }
+                                              return;
+                                            }
+                                          }
+                                          await Share.share(message);
+                                        },
+                                        tooltip: 'Share streak',
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          // Days used this year row
+                          InkWell(
+                            onTap: () => Navigator.of(context).pushNamed('/settings'),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Card(
+                              elevation: 2,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.teal.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Icon(Icons.calendar_today, color: Colors.teal, size: 22),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      '$_daysUsedThisYear days this year',
+                                      style: const TextStyle(fontSize: 16),
+                                    ),
+                                    const Spacer(),
+                                    const Icon(Icons.chevron_right, color: Colors.grey),
+                                  ],
+                                ),
                               ),
                             ),
                           ),

@@ -11,6 +11,7 @@ import 'screens/home_screen.dart';
 import 'services/photo_service.dart';
 import 'models/media_item.dart';
 import 'utils/cache_cleanup.dart';
+import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +24,8 @@ void main() async {
   // Don't clear cache on startup — the engine/plugins expect some files to exist;
   // clearing here causes "fopen failed / Invalidating cache" in the console.
   // We only clear when the app goes to background so Documents & Data drops.
+
+  await NotificationService.initialize();
 
   // Force portrait mode
   await SystemChrome.setPreferredOrientations([
@@ -60,6 +63,9 @@ class _CacheCleanupAppWrapperState extends State<CacheCleanupAppWrapper>
     if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       // Clear cache when user leaves app so storage size drops. Don't await.
       CacheCleanup.clearTempFilesOnStartup();
+    }
+    if (state == AppLifecycleState.resumed) {
+      NotificationService.scheduleReminder();
     }
   }
 
