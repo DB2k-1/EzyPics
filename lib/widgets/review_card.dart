@@ -15,6 +15,7 @@ class ReviewCard extends StatefulWidget {
   final Uint8List? cachedThumbnail;
   final bool? decision;
   final void Function(bool keep) onDecide;
+  final bool isActive;
 
   const ReviewCard({
     super.key,
@@ -22,6 +23,7 @@ class ReviewCard extends StatefulWidget {
     required this.onDecide,
     this.cachedThumbnail,
     this.decision,
+    this.isActive = true,
   });
 
   @override
@@ -108,6 +110,7 @@ class _ReviewCardState extends State<ReviewCard> with SingleTickerProviderStateM
               SwipeCard(
                 mediaItem: widget.mediaItem,
                 cachedThumbnail: widget.cachedThumbnail,
+                isActive: widget.isActive,
               ),
 
               // Coloured drag-intent overlay

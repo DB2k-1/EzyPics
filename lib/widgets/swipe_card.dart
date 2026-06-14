@@ -329,12 +329,14 @@ class _FullscreenVideoPlayerState extends State<_FullscreenVideoPlayer> {
 
 class SwipeCard extends StatefulWidget {
   final MediaItem mediaItem;
-  final Uint8List? cachedThumbnail; // Optional cached thumbnail for videos and images
+  final Uint8List? cachedThumbnail;
+  final bool isActive;
 
   const SwipeCard({
     super.key,
     required this.mediaItem,
     this.cachedThumbnail,
+    this.isActive = true,
   });
 
   @override
@@ -424,6 +426,14 @@ class _SwipeCardState extends State<SwipeCard> {
           _isVideoInitializing = false;
         });
       }
+    }
+  }
+
+  @override
+  void didUpdateWidget(SwipeCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.isActive && oldWidget.isActive) {
+      _videoController?.pause();
     }
   }
 

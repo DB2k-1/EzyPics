@@ -178,11 +178,34 @@ class _SwipeScreenState extends State<SwipeScreen> {
         curve: Curves.easeInOut,
       );
     } else {
-      // Last item decided — auto-finish after the snap-back animation settles
+      // Last item decided — prompt after the snap-back animation settles
       Future.delayed(const Duration(milliseconds: 400), () {
-        if (mounted) _finishReview();
+        if (mounted) _promptFinishReview();
       });
     }
+  }
+
+  Future<void> _promptFinishReview() async {
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('All done?'),
+        content: Text(
+          'You\'ve reviewed all ${widget.media.length} item${widget.media.length == 1 ? '' : 's'}. Ready to proceed?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep Reviewing'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Proceed'),
+          ),
+        ],
+      ),
+    );
+    if (proceed == true && mounted) _finishReview();
   }
 
   void _finishReview() {
@@ -292,6 +315,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
                                 ? _videoThumbnailCache[mediaItem.id]
                                 : _imageThumbnailCache[mediaItem.id],
                             decision: _decisions[mediaItem.id],
+                            isActive: index == _currentIndex,
                             onDecide: (keep) => _decide(index, keep),
                           ),
                         ),

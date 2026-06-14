@@ -568,7 +568,34 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
+    } else {
+      Future.delayed(const Duration(milliseconds: 400), () {
+        if (mounted) _promptFinishReview();
+      });
     }
+  }
+
+  Future<void> _promptFinishReview() async {
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('All done?'),
+        content: Text(
+          'You\'ve reviewed all ${_reviewMedia.length} item${_reviewMedia.length == 1 ? '' : 's'}. Ready to proceed?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep Reviewing'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Proceed'),
+          ),
+        ],
+      ),
+    );
+    if (proceed == true && mounted) _onReviewEnd();
   }
 
   void _onReviewEnd() {
@@ -845,6 +872,7 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
                               ? _videoThumbnailCache[mediaItem.id]
                               : _imageThumbnailCache[mediaItem.id],
                           decision: _reviewDecisions[mediaItem.id],
+                          isActive: index == _currentIndex,
                           onDecide: (keep) {
                             setState(() => _reviewDecisions[mediaItem.id] = keep);
                             if (index + 1 < _reviewMedia.length) {
@@ -854,7 +882,7 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
                               );
                             } else {
                               Future.delayed(const Duration(milliseconds: 400), () {
-                                if (mounted) _onReviewEnd();
+                                if (mounted) _promptFinishReview();
                               });
                             }
                           },
