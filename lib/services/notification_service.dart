@@ -83,14 +83,14 @@ class NotificationService {
       // random or timeRange: pick random time tomorrow
       int startHour = 8;
       int startMinute = 0;
-      int endHour = 22;
+      int endHour = 21;
       int endMinute = 0;
 
       if (mode == 'timeRange') {
         final prefs = await SharedPreferences.getInstance();
         startHour = prefs.getInt(_keyRangeStartHour) ?? 8;
         startMinute = prefs.getInt(_keyRangeStartMinute) ?? 0;
-        endHour = prefs.getInt(_keyRangeEndHour) ?? 22;
+        endHour = prefs.getInt(_keyRangeEndHour) ?? 21;
         endMinute = prefs.getInt(_keyRangeEndMinute) ?? 0;
       }
 

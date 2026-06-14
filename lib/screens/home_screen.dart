@@ -4,6 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/stats_service.dart';
 import '../services/streak_service.dart';
+import '../services/notification_service.dart';
 import '../services/photo_service.dart';
 import '../utils/date_utils.dart';
 import '../utils/cache_cleanup.dart';
@@ -31,6 +32,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadStats();
+    // Ask for notification permission on first launch. The OS only shows the
+    // dialog once; subsequent calls are silent if already granted or denied.
+    NotificationService.requestPermission();
   }
 
   @override
