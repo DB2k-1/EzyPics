@@ -288,20 +288,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 12),
-                          _buildStatCard(
-                            icon: Icons.photo,
-                            title: 'Photos Deleted',
-                            value: '$_photosDeleted',
-                            subtitle: StatsService.formatBytes(_photoStorageBytes),
-                            color: Colors.blue,
-                          ),
-                          const SizedBox(height: 12),
-                          _buildStatCard(
-                            icon: Icons.videocam,
-                            title: 'Videos Deleted',
-                            value: '$_videosDeleted',
-                            subtitle: StatsService.formatBytes(_videoStorageBytes),
-                            color: Colors.purple,
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildStatCard(
+                                  icon: Icons.photo,
+                                  title: 'Photos',
+                                  value: '$_photosDeleted',
+                                  subtitle: StatsService.formatBytes(_photoStorageBytes),
+                                  color: Colors.blue,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _buildStatCard(
+                                  icon: Icons.videocam,
+                                  title: 'Videos',
+                                  value: '$_videosDeleted',
+                                  subtitle: StatsService.formatBytes(_videoStorageBytes),
+                                  color: Colors.purple,
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 12),
                           _buildStatCard(
