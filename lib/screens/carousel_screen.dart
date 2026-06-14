@@ -544,9 +544,7 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
       final asset = await AssetEntity.fromId(item.id)
           .timeout(const Duration(seconds: 5), onTimeout: () => null);
       if (asset != null && !item.isVideo) {
-        // Only preload file if thumbnail not cached
         if (!_imageThumbnailCache.containsKey(item.id)) {
-          await asset.file.timeout(const Duration(seconds: 5), onTimeout: () => null);
           _loadImageThumbnail(item.id);
         }
       } else if (asset != null && item.isVideo && !_videoThumbnailCache.containsKey(item.id)) {

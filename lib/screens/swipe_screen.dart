@@ -36,6 +36,8 @@ class _SwipeScreenState extends State<SwipeScreen> {
   static const int _kMaxThumbnailDimension = 480;
   int _currentIndex = 0;
   Timer? _diskCacheCleanupTimer;
+  Timer? _batchUpdateTimer;
+  final Map<String, Uint8List> _pendingThumbnailUpdates = {};
 
   @override
   void initState() {
@@ -52,10 +54,12 @@ class _SwipeScreenState extends State<SwipeScreen> {
   @override
   void dispose() {
     _diskCacheCleanupTimer?.cancel();
+    _batchUpdateTimer?.cancel();
     _videoThumbnailCache.clear();
     _imageThumbnailCache.clear();
     _imageThumbnailOrder.clear();
     _videoThumbnailOrder.clear();
+    _pendingThumbnailUpdates.clear();
     _pageController.dispose();
     CacheCleanup.clearImageCache();
     CacheCleanup.clearAllDiskCaches();
@@ -98,14 +102,8 @@ class _SwipeScreenState extends State<SwipeScreen> {
       }
       final thumbnail = await asset.thumbnailDataWithSize(ThumbnailSize(thumbWidth, thumbHeight));
       if (thumbnail != null && mounted) {
-        setState(() {
-          _imageThumbnailCache[mediaId] = thumbnail;
-          _imageThumbnailOrder.add(mediaId);
-          while (_imageThumbnailCache.length > _kMaxThumbnailCacheSize &&
-              _imageThumbnailOrder.isNotEmpty) {
-            _imageThumbnailCache.remove(_imageThumbnailOrder.removeAt(0));
-          }
-        });
+        _pendingThumbnailUpdates[mediaId] = thumbnail;
+        _scheduleBatchUpdate();
       }
     } catch (e) {
       print('Error loading image thumbnail for $mediaId: $e');
@@ -118,31 +116,51 @@ class _SwipeScreenState extends State<SwipeScreen> {
       if (asset == null) return;
       final thumbnail = await asset.thumbnailDataWithSize(const ThumbnailSize(480, 480));
       if (thumbnail != null && mounted) {
-        setState(() {
-          _videoThumbnailCache[mediaId] = thumbnail;
-          _videoThumbnailOrder.add(mediaId);
-          while (_videoThumbnailCache.length > _kMaxThumbnailCacheSize &&
-              _videoThumbnailOrder.isNotEmpty) {
-            _videoThumbnailCache.remove(_videoThumbnailOrder.removeAt(0));
-          }
-        });
+        _pendingThumbnailUpdates['video_$mediaId'] = thumbnail;
+        _scheduleBatchUpdate();
       }
     } catch (e) {
       print('Error loading video thumbnail for $mediaId: $e');
     }
   }
 
+  /// Debounce setState so thumbnail loads that land mid-scroll don't each
+  /// trigger a separate rebuild and interrupt the page-snap animation.
+  void _scheduleBatchUpdate() {
+    _batchUpdateTimer?.cancel();
+    _batchUpdateTimer = Timer(const Duration(milliseconds: 100), () {
+      if (!mounted || _pendingThumbnailUpdates.isEmpty) return;
+      setState(() {
+        for (final entry in _pendingThumbnailUpdates.entries) {
+          if (entry.key.startsWith('video_')) {
+            final mediaId = entry.key.substring(6);
+            _videoThumbnailCache[mediaId] = entry.value;
+            _videoThumbnailOrder.add(mediaId);
+            while (_videoThumbnailCache.length > _kMaxThumbnailCacheSize &&
+                _videoThumbnailOrder.isNotEmpty) {
+              _videoThumbnailCache.remove(_videoThumbnailOrder.removeAt(0));
+            }
+          } else {
+            _imageThumbnailCache[entry.key] = entry.value;
+            _imageThumbnailOrder.add(entry.key);
+            while (_imageThumbnailCache.length > _kMaxThumbnailCacheSize &&
+                _imageThumbnailOrder.isNotEmpty) {
+              _imageThumbnailCache.remove(_imageThumbnailOrder.removeAt(0));
+            }
+          }
+        }
+        _pendingThumbnailUpdates.clear();
+      });
+    });
+  }
+
   Future<void> _preloadNextItem(int index) async {
     if (index >= widget.media.length) return;
     final item = widget.media[index];
     try {
-      final asset = await AssetEntity.fromId(item.id);
-      if (asset != null && !item.isVideo) {
-        await asset.file;
-        if (!_imageThumbnailCache.containsKey(item.id)) {
-          _loadImageThumbnail(item.id);
-        }
-      } else if (asset != null && item.isVideo && !_videoThumbnailCache.containsKey(item.id)) {
+      if (!item.isVideo && !_imageThumbnailCache.containsKey(item.id)) {
+        _loadImageThumbnail(item.id);
+      } else if (item.isVideo && !_videoThumbnailCache.containsKey(item.id)) {
         _loadVideoThumbnail(item.id);
       }
     } catch (e) {

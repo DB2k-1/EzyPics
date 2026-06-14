@@ -30,7 +30,6 @@ class _DeletionConfirmationScreenState
   final Set<String> _selectedIds = {};
   bool _isDeleting = false;
   Map<String, int> _fileSizes = {};
-  bool _sizesReady = false;
 
   @override
   void initState() {
@@ -39,7 +38,7 @@ class _DeletionConfirmationScreenState
     // Precompute file sizes in the background so _handleDelete doesn't block
     // waiting for iCloud downloads when the user eventually taps Delete.
     PhotoService.getFileSizes(widget.mediaToDelete).then((sizes) {
-      if (mounted) setState(() { _fileSizes = sizes; _sizesReady = true; });
+      if (mounted) setState(() { _fileSizes = sizes; });
     });
   }
 
@@ -103,10 +102,9 @@ class _DeletionConfirmationScreenState
       int videoStorageBytes = 0;
 
       try {
-        // Use precomputed sizes (fetched in initState); fall back if not ready yet.
-        final fileSizes = _sizesReady
-            ? _fileSizes
-            : await PhotoService.getFileSizes(itemsToDelete);
+        // Use precomputed sizes (fetched in initState). If not ready yet, proceed
+        // with what we have — sizes are for stats only and must not block deletion.
+        final fileSizes = _fileSizes;
         for (final item in itemsToDelete) {
           final size = fileSizes[item.id] ?? 0;
           if (item.isVideo) {
@@ -237,18 +235,24 @@ class _DeletionConfirmationScreenState
           child: const Icon(Icons.videocam),
         );
       } else {
-        // For photos, use the file directly
-        final file = await asset.file;
-        if (file == null) return null;
-        return Image.file(
-          file,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return Container(
-              color: Colors.grey[300],
-              child: const Icon(Icons.image),
-            );
-          },
+        final thumbnail = await asset.thumbnailDataWithSize(
+          const ThumbnailSize(300, 300),
+        );
+        if (thumbnail != null) {
+          return Image.memory(
+            thumbnail,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                color: Colors.grey[300],
+                child: const Icon(Icons.image),
+              );
+            },
+          );
+        }
+        return Container(
+          color: Colors.grey[300],
+          child: const Icon(Icons.image),
         );
       }
     } catch (e) {
