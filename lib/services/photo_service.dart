@@ -26,12 +26,17 @@ class PhotoService {
         return mediaMap;
       }
 
-      // Use the first album (usually "Recent" or main album)
-      final album = albums.first;
+      // Use the "All Photos" album (isAll == true) — not albums.first, which
+      // can be a smart album like "Portraits" on some iOS configurations.
+      final album = albums.firstWhere(
+        (a) => a.isAll,
+        orElse: () => albums.first,
+      );
       final assetCount = await album.assetCountAsync;
       
       // Fetch assets in smaller batches to avoid blocking
       const batchSize = 200; // Reduced from 500 to prevent ANR
+      final seenIds = <String>{};
       int totalProcessed = 0;
       for (int start = 0; start < assetCount && start < 50000; start += batchSize) {
         final end = (start + batchSize < assetCount) ? start + batchSize : assetCount;
@@ -51,7 +56,7 @@ class PhotoService {
         int videoCount = 0;
         int photoCount = 0;
         for (final asset in assets) {
-          if (asset.createDateTime != null) {
+          if (asset.createDateTime != null && seenIds.add(asset.id)) {
             final isVideo = asset.type == AssetType.video;
             if (isVideo) videoCount++;
             else photoCount++;
