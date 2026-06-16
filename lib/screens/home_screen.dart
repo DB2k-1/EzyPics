@@ -32,9 +32,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadStats();
-    // Ask for notification permission on first launch. The OS only shows the
-    // dialog once; subsequent calls are silent if already granted or denied.
-    NotificationService.requestPermission();
+    _initNotifications();
+  }
+
+  Future<void> _initNotifications() async {
+    await NotificationService.requestPermission();
+    await NotificationService.scheduleReminder();
   }
 
   @override

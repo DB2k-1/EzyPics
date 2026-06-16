@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
@@ -24,6 +25,10 @@ class NotificationService {
   static Future<void> initialize() async {
     tz.initializeTimeZones();
 
+    // Set the local timezone so scheduled times match the device clock.
+    final String tzName = await FlutterTimezone.getLocalTimezone();
+    tz.setLocalLocation(tz.getLocation(tzName));
+
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: false,
@@ -31,7 +36,14 @@ class NotificationService {
       requestSoundPermission: false,
     );
     const settings = InitializationSettings(android: androidSettings, iOS: iosSettings);
-    await _plugin.initialize(settings);
+
+    // Reschedule the next random/timeRange notification when the user taps one,
+    // so random reminders keep firing even if the app isn't opened between them.
+    await _plugin.initialize(
+      settings,
+      onDidReceiveNotificationResponse: (_) => scheduleReminder(),
+      onDidReceiveBackgroundNotificationResponse: _onBackgroundNotification,
+    );
   }
 
   static Future<void> requestPermission() async {
@@ -68,6 +80,7 @@ class NotificationService {
       final hour = prefs.getInt(_keySetHour) ?? 9;
       final minute = prefs.getInt(_keySetMinute) ?? 0;
 
+      // matchDateTimeComponents makes this repeat daily automatically.
       await _plugin.zonedSchedule(
         _notifId,
         _title,
@@ -80,7 +93,8 @@ class NotificationService {
         matchDateTimeComponents: DateTimeComponents.time,
       );
     } else {
-      // random or timeRange: pick random time tomorrow
+      // random or timeRange: pick a random time within the window.
+      // Schedule for later today if still within the window, else tomorrow.
       int startHour = 8;
       int startMinute = 0;
       int endHour = 21;
@@ -102,15 +116,18 @@ class NotificationService {
       final pickedHour = pickedMinutes ~/ 60;
       final pickedMinute = pickedMinutes % 60;
 
-      final tomorrow = now.add(const Duration(days: 1));
-      final scheduled = tz.TZDateTime(
+      // Try to schedule for today first; fall back to tomorrow if time has passed.
+      var scheduled = tz.TZDateTime(
         tz.local,
-        tomorrow.year,
-        tomorrow.month,
-        tomorrow.day,
+        now.year,
+        now.month,
+        now.day,
         pickedHour,
         pickedMinute,
       );
+      if (!scheduled.isAfter(now)) {
+        scheduled = scheduled.add(const Duration(days: 1));
+      }
 
       await _plugin.zonedSchedule(
         _notifId,
@@ -178,7 +195,7 @@ class NotificationService {
   static Future<TimeOfDay> getRangeEnd() async {
     final prefs = await SharedPreferences.getInstance();
     return TimeOfDay(
-      hour: prefs.getInt(_keyRangeEndHour) ?? 22,
+      hour: prefs.getInt(_keyRangeEndHour) ?? 21,
       minute: prefs.getInt(_keyRangeEndMinute) ?? 0,
     );
   }
@@ -188,4 +205,10 @@ class NotificationService {
     await prefs.setInt(_keyRangeEndHour, h);
     await prefs.setInt(_keyRangeEndMinute, m);
   }
+}
+
+// Top-level function required for Android background notification response.
+@pragma('vm:entry-point')
+void _onBackgroundNotification(NotificationResponse _) {
+  NotificationService.scheduleReminder();
 }

@@ -29,7 +29,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _notifMode = 'random';
   TimeOfDay _notifSetTime = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay _notifRangeStart = const TimeOfDay(hour: 8, minute: 0);
-  TimeOfDay _notifRangeEnd = const TimeOfDay(hour: 22, minute: 0);
+  TimeOfDay _notifRangeEnd = const TimeOfDay(hour: 21, minute: 0);
 
   @override
   void initState() {
