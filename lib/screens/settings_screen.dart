@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../models/media_item.dart';
@@ -328,13 +329,63 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return '$h:$m';
   }
 
-  Future<void> _pickTime(
+  Future<void> _pickTimeCupertino(
     BuildContext context,
     TimeOfDay initial,
     Future<void> Function(TimeOfDay) onPicked,
   ) async {
-    final picked = await showTimePicker(context: context, initialTime: initial);
-    if (picked != null) await onPicked(picked);
+    DateTime picked = DateTime(2000, 1, 1, initial.hour, initial.minute);
+
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (ctx) => Container(
+        height: 280,
+        color: CupertinoColors.systemBackground.resolveFrom(ctx),
+        child: Column(
+          children: [
+            Align(
+              alignment: Alignment.centerRight,
+              child: CupertinoButton(
+                child: const Text('Done'),
+                onPressed: () => Navigator.of(ctx).pop(),
+              ),
+            ),
+            Expanded(
+              child: CupertinoDatePicker(
+                mode: CupertinoDatePickerMode.time,
+                initialDateTime: picked,
+                use24hFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+                onDateTimeChanged: (dt) => picked = dt,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await onPicked(TimeOfDay(hour: picked.hour, minute: picked.minute));
+  }
+
+  Widget _buildTimeTile(String label, TimeOfDay time, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+        child: Row(
+          children: [
+            Text(label, style: const TextStyle(fontSize: 16)),
+            const SizedBox(width: 8),
+            Text(
+              _formatTimeOfDay(time),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            const Spacer(),
+            const Icon(Icons.chevron_right, color: Colors.grey),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildNotifSettings() {
@@ -347,6 +398,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const Text(
               'Reminders',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Random fires any time 8am–9pm. Time Range lets you set the window.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
             ),
             const SizedBox(height: 12),
             Wrap(
@@ -371,40 +427,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
             if (_notifMode == 'setTime') ...[
-              const SizedBox(height: 12),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text('Remind me at ${_formatTimeOfDay(_notifSetTime)}'),
-                trailing: const Icon(Icons.access_time),
-                onTap: () => _pickTime(context, _notifSetTime, (t) async {
+              const SizedBox(height: 8),
+              _buildTimeTile('Remind me at', _notifSetTime, () => _pickTimeCupertino(
+                context, _notifSetTime, (t) async {
                   await NotificationService.setSetTime(t.hour, t.minute);
                   await NotificationService.scheduleReminder();
                   if (mounted) setState(() => _notifSetTime = t);
-                }),
-              ),
+                },
+              )),
             ],
             if (_notifMode == 'timeRange') ...[
-              const SizedBox(height: 12),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text('From ${_formatTimeOfDay(_notifRangeStart)}'),
-                trailing: const Icon(Icons.access_time),
-                onTap: () => _pickTime(context, _notifRangeStart, (t) async {
+              const SizedBox(height: 8),
+              _buildTimeTile('From', _notifRangeStart, () => _pickTimeCupertino(
+                context, _notifRangeStart, (t) async {
                   await NotificationService.setRangeStart(t.hour, t.minute);
                   await NotificationService.scheduleReminder();
                   if (mounted) setState(() => _notifRangeStart = t);
-                }),
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text('To ${_formatTimeOfDay(_notifRangeEnd)}'),
-                trailing: const Icon(Icons.access_time),
-                onTap: () => _pickTime(context, _notifRangeEnd, (t) async {
+                },
+              )),
+              _buildTimeTile('To', _notifRangeEnd, () => _pickTimeCupertino(
+                context, _notifRangeEnd, (t) async {
                   await NotificationService.setRangeEnd(t.hour, t.minute);
                   await NotificationService.scheduleReminder();
                   if (mounted) setState(() => _notifRangeEnd = t);
-                }),
-              ),
+                },
+              )),
             ],
           ],
         ),
