@@ -116,28 +116,19 @@ class NotificationService {
       final pickedHour = pickedMinutes ~/ 60;
       final pickedMinute = pickedMinutes % 60;
 
-      // Try to schedule for today first; fall back to tomorrow if time has passed.
-      var scheduled = tz.TZDateTime(
-        tz.local,
-        now.year,
-        now.month,
-        now.day,
-        pickedHour,
-        pickedMinute,
-      );
-      if (!scheduled.isAfter(now)) {
-        scheduled = scheduled.add(const Duration(days: 1));
-      }
-
+      // Repeat daily at this random time. When the user opens the app the
+      // resumed callback calls scheduleReminder() again, picking a new random
+      // time — so the time varies each session without needing tap callbacks.
       await _plugin.zonedSchedule(
         _notifId,
         _title,
         _body,
-        scheduled,
+        _nextInstanceOfTime(now, pickedHour, pickedMinute),
         details,
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
       );
     }
   }
