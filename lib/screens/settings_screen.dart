@@ -323,6 +323,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  String _notifModeDescription(String mode) {
+    switch (mode) {
+      case 'off':
+        return 'No reminders will be sent.';
+      case 'random':
+        return 'You\'ll get a reminder at a random time between 8am and 9pm each day.';
+      case 'setTime':
+        return 'You\'ll get a reminder every day at the time you choose below.';
+      case 'timeRange':
+        return 'You\'ll get a reminder at a random time within the window you set below.';
+      default:
+        return '';
+    }
+  }
+
   String _formatTimeOfDay(TimeOfDay t) {
     final h = t.hour.toString().padLeft(2, '0');
     final m = t.minute.toString().padLeft(2, '0');
@@ -399,11 +414,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               'Reminders',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 4),
-            const Text(
-              'Random fires any time 8am–9pm. Time Range lets you set the window.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
@@ -425,6 +435,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     },
                   ),
               ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              _notifModeDescription(_notifMode),
+              style: TextStyle(fontSize: 13, color: Colors.grey[600]),
             ),
             if (_notifMode == 'setTime') ...[
               const SizedBox(height: 8),
