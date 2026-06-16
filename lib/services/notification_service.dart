@@ -15,6 +15,7 @@ class NotificationService {
   static const String _keyRangeStartMinute = 'notif_range_start_minute';
   static const String _keyRangeEndHour = 'notif_range_end_hour';
   static const String _keyRangeEndMinute = 'notif_range_end_minute';
+  static const String _keyLastRandomDate = 'notif_last_random_date';
 
   static const String _title = 'Time to tidy up 📸';
   static const String _body = 'Review your photos and free up some space!';
@@ -93,15 +94,21 @@ class NotificationService {
         matchDateTimeComponents: DateTimeComponents.time,
       );
     } else {
-      // random or timeRange: pick a random time within the window.
-      // Schedule for later today if still within the window, else tomorrow.
+      // random or timeRange: pick a random time within the window, once per day.
+      // Only reschedule if we haven't already picked a time today — otherwise
+      // opening the app mid-day could cancel today's notification and pick a
+      // new time that has already passed, silently skipping the day.
+      final prefs = await SharedPreferences.getInstance();
+      final todayStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final lastDate = prefs.getString(_keyLastRandomDate);
+      if (lastDate == todayStr) return;
+
       int startHour = 8;
       int startMinute = 0;
       int endHour = 21;
       int endMinute = 0;
 
       if (mode == 'timeRange') {
-        final prefs = await SharedPreferences.getInstance();
         startHour = prefs.getInt(_keyRangeStartHour) ?? 8;
         startMinute = prefs.getInt(_keyRangeStartMinute) ?? 0;
         endHour = prefs.getInt(_keyRangeEndHour) ?? 21;
@@ -116,9 +123,6 @@ class NotificationService {
       final pickedHour = pickedMinutes ~/ 60;
       final pickedMinute = pickedMinutes % 60;
 
-      // Repeat daily at this random time. When the user opens the app the
-      // resumed callback calls scheduleReminder() again, picking a new random
-      // time — so the time varies each session without needing tap callbacks.
       await _plugin.zonedSchedule(
         _notifId,
         _title,
@@ -130,6 +134,8 @@ class NotificationService {
             UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: DateTimeComponents.time,
       );
+
+      await prefs.setString(_keyLastRandomDate, todayStr);
     }
   }
 
