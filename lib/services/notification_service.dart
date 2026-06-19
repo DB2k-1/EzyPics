@@ -38,8 +38,6 @@ class NotificationService {
     );
     const settings = InitializationSettings(android: androidSettings, iOS: iosSettings);
 
-    // Reschedule the next random/timeRange notification when the user taps one,
-    // so random reminders keep firing even if the app isn't opened between them.
     await _plugin.initialize(
       settings,
       onDidReceiveNotificationResponse: (_) => scheduleReminder(),
@@ -60,9 +58,12 @@ class NotificationService {
 
   static Future<void> scheduleReminder() async {
     final mode = await getMode();
-    await cancelReminder();
 
-    if (mode == 'off') return;
+    // Turn off: cancel any pending notification and stop.
+    if (mode == 'off') {
+      await cancelReminder();
+      return;
+    }
 
     const androidDetails = AndroidNotificationDetails(
       'ezypics_reminders',
@@ -71,7 +72,7 @@ class NotificationService {
       importance: Importance.defaultImportance,
       priority: Priority.defaultPriority,
     );
-    const iosDetails = DarwinNotificationDetails();
+    const iosDetails = DarwinNotificationDetails(badgeNumber: 1);
     const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
 
     final now = tz.TZDateTime.now(tz.local);
@@ -81,7 +82,8 @@ class NotificationService {
       final hour = prefs.getInt(_keySetHour) ?? 9;
       final minute = prefs.getInt(_keySetMinute) ?? 0;
 
-      // matchDateTimeComponents makes this repeat daily automatically.
+      // Cancel then reschedule at the (possibly updated) set time.
+      await cancelReminder();
       await _plugin.zonedSchedule(
         _notifId,
         _title,
@@ -94,14 +96,13 @@ class NotificationService {
         matchDateTimeComponents: DateTimeComponents.time,
       );
     } else {
-      // random or timeRange: pick a random time within the window, once per day.
-      // Only reschedule if we haven't already picked a time today — otherwise
-      // opening the app mid-day could cancel today's notification and pick a
-      // new time that has already passed, silently skipping the day.
+      // random or timeRange: pick a time once per day and leave it alone.
+      // IMPORTANT: check the date BEFORE cancelling — the previous bug was
+      // cancelling first and then returning early, killing today's notification.
       final prefs = await SharedPreferences.getInstance();
-      final todayStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-      final lastDate = prefs.getString(_keyLastRandomDate);
-      if (lastDate == todayStr) return;
+      final todayStr =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      if (prefs.getString(_keyLastRandomDate) == todayStr) return;
 
       int startHour = 8;
       int startMinute = 0;
@@ -117,12 +118,14 @@ class NotificationService {
 
       final startMinutes = startHour * 60 + startMinute;
       final endMinutes = endHour * 60 + endMinute;
-      final rangeMinutes = (endMinutes > startMinutes) ? endMinutes - startMinutes : 60;
+      final rangeMinutes =
+          (endMinutes > startMinutes) ? endMinutes - startMinutes : 60;
       final randomOffset = Random().nextInt(rangeMinutes);
       final pickedMinutes = startMinutes + randomOffset;
       final pickedHour = pickedMinutes ~/ 60;
       final pickedMinute = pickedMinutes % 60;
 
+      await cancelReminder();
       await _plugin.zonedSchedule(
         _notifId,
         _title,
@@ -139,8 +142,10 @@ class NotificationService {
     }
   }
 
-  static tz.TZDateTime _nextInstanceOfTime(tz.TZDateTime now, int hour, int minute) {
-    var scheduled = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
+  static tz.TZDateTime _nextInstanceOfTime(
+      tz.TZDateTime now, int hour, int minute) {
+    var scheduled =
+        tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
     if (scheduled.isBefore(now)) {
       scheduled = scheduled.add(const Duration(days: 1));
     }
