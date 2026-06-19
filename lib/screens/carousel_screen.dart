@@ -7,6 +7,7 @@ import 'package:photo_manager/photo_manager.dart';
 import '../models/media_item.dart';
 import '../services/photo_service.dart';
 import '../services/share_service.dart';
+import '../services/notification_service.dart';
 import '../services/streak_service.dart';
 import '../utils/cache_cleanup.dart';
 import '../utils/date_utils.dart';
@@ -609,6 +610,7 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
       if (!mounted) return;
 
       await StreakService.recordUsage();
+      await NotificationService.cancelReminder();
 
       if (!mounted) return;
 

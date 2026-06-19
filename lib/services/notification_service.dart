@@ -5,6 +5,7 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+import 'streak_service.dart';
 
 class NotificationService {
   static const int _notifId = 0;
@@ -61,6 +62,14 @@ class NotificationService {
 
     // Turn off: cancel any pending notification and stop.
     if (mode == 'off') {
+      await cancelReminder();
+      return;
+    }
+
+    // If the user has already completed a review today, no reminder needed.
+    final usageDates = await StreakService.getUsageDates();
+    final todayIso = StreakService.isoDate(DateTime.now());
+    if (usageDates.contains(todayIso)) {
       await cancelReminder();
       return;
     }
