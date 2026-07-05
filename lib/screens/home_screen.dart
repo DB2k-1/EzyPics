@@ -118,6 +118,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                       if (!mounted) return;
                                       final mediaForToday = mediaMap[todayKey] ?? [];
                                       if (mediaForToday.isEmpty) {
+                                        // No media today — still credit the streak and
+                                        // cancel today's reminder; the user showed up.
+                                        await StreakService.recordUsage();
+                                        await NotificationService.cancelReminder();
+                                        if (!mounted) return;
                                         Navigator.of(context).pushReplacementNamed('/settings');
                                       } else {
                                         Navigator.of(context).pushReplacementNamed('/carousel');
