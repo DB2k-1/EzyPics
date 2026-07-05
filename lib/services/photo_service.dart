@@ -131,12 +131,20 @@ class PhotoService {
     }
   }
 
-  /// Get file sizes for multiple media items (runs in parallel for speed).
+  /// Get file sizes for multiple media items in small batches to avoid
+  /// flooding PhotoKit with concurrent asset.file calls, which forces iOS
+  /// to fetch metadata on the main queue and degrades performance.
   static Future<Map<String, int>> getFileSizes(List<MediaItem> items) async {
     if (items.isEmpty) return {};
-    final results = await Future.wait(
-      items.map((item) => getFileSize(item).then((size) => MapEntry(item.id, size))),
-    );
+    const batchSize = 5;
+    final results = <MapEntry<String, int>>[];
+    for (int i = 0; i < items.length; i += batchSize) {
+      final batch = items.skip(i).take(batchSize).toList();
+      final batchResults = await Future.wait(
+        batch.map((item) => getFileSize(item).then((size) => MapEntry(item.id, size))),
+      );
+      results.addAll(batchResults);
+    }
     return Map.fromEntries(results);
   }
 

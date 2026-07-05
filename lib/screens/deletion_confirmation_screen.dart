@@ -83,88 +83,68 @@ class _DeletionConfirmationScreenState
 
     if (confirmed != true) return;
 
-    // Dismiss dialog and show loading immediately so UI doesn't feel stuck
     setState(() => _isDeleting = true);
 
     final itemsToDelete = widget.mediaToDelete
         .where((item) => _selectedIds.contains(item.id))
         .toList();
 
-    // Yield so the full-screen spinner paints before we do heavy work
+    // Yield one frame so the spinner paints before heavy work begins.
     await Future.delayed(Duration.zero);
     if (!context.mounted) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!context.mounted) return;
 
-      int photosDeleted = 0;
-      int videosDeleted = 0;
-      int photoStorageBytes = 0;
-      int videoStorageBytes = 0;
+    int photosDeleted = 0;
+    int videosDeleted = 0;
+    int photoStorageBytes = 0;
+    int videoStorageBytes = 0;
 
-      try {
-        // Use precomputed sizes (fetched in initState). If not ready yet, proceed
-        // with what we have — sizes are for stats only and must not block deletion.
-        final fileSizes = _fileSizes;
-        for (final item in itemsToDelete) {
-          final size = fileSizes[item.id] ?? 0;
-          if (item.isVideo) {
-            videosDeleted++;
-            videoStorageBytes += size;
-          } else {
-            photosDeleted++;
-            photoStorageBytes += size;
-          }
-        }
-
-        print('DeletionConfirmationScreen: Deleting ${itemsToDelete.length} items - Photos: $photosDeleted, Videos: $videosDeleted');
-
-        final success = await PhotoService.deleteMediaItems(itemsToDelete);
-
-        if (!context.mounted) return;
-        setState(() => _isDeleting = false);
-
-        if (success) {
-          // Record stats
-          print('DeletionConfirmationScreen: Recording stats - Photos: $photosDeleted, Videos: $videosDeleted');
-          await StatsService.recordDeletions(
-            photosDeleted: photosDeleted,
-            videosDeleted: videosDeleted,
-            photoStorageBytes: photoStorageBytes,
-            videoStorageBytes: videoStorageBytes,
-          );
-
-          // Clear app cache on confirm so Documents & Data drops after deletion
-          CacheCleanup.clearImageCache();
-          await CacheCleanup.clearAllDiskCaches();
-
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Successfully deleted ${itemsToDelete.length} item(s)'),
-              ),
-            );
-            await Future.delayed(const Duration(milliseconds: 100));
-            if (context.mounted) {
-              Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
-            }
-          }
+    try {
+      final fileSizes = _fileSizes;
+      for (final item in itemsToDelete) {
+        final size = fileSizes[item.id] ?? 0;
+        if (item.isVideo) {
+          videosDeleted++;
+          videoStorageBytes += size;
         } else {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Failed to delete items')),
-            );
-          }
+          photosDeleted++;
+          photoStorageBytes += size;
         }
-      } catch (e) {
-        print('DeletionConfirmationScreen: Error during deletion: $e');
+      }
+
+      final success = await PhotoService.deleteMediaItems(itemsToDelete);
+
+      if (!context.mounted) return;
+      setState(() => _isDeleting = false);
+
+      if (success) {
+        await StatsService.recordDeletions(
+          photosDeleted: photosDeleted,
+          videosDeleted: videosDeleted,
+          photoStorageBytes: photoStorageBytes,
+          videoStorageBytes: videoStorageBytes,
+        );
+
         if (context.mounted) {
-          setState(() => _isDeleting = false);
+          Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+          // Clear cache after navigating so it doesn't delay the user seeing home.
+          CacheCleanup.clearImageCache();
+          CacheCleanup.clearAllDiskCaches();
+        }
+      } else {
+        if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Failed to delete items')),
           );
         }
       }
-    });
+    } catch (e) {
+      if (context.mounted) {
+        setState(() => _isDeleting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to delete items')),
+        );
+      }
+    }
   }
 
   Widget _buildThumbnail(MediaItem item) {
