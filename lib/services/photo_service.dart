@@ -12,6 +12,37 @@ class PhotoService {
     return status.isAuth;
   }
 
+  /// Returns total photo and video counts from the device library.
+  /// Uses album-level count queries — no full asset scan needed.
+  static Future<({int photos, int videos})> getMediaCounts() async {
+    try {
+      int photos = 0;
+      int videos = 0;
+
+      final imageAlbums = await PhotoManager.getAssetPathList(
+        type: RequestType.image,
+        hasAll: true,
+      );
+      if (imageAlbums.isNotEmpty) {
+        final album = imageAlbums.firstWhere((a) => a.isAll, orElse: () => imageAlbums.first);
+        photos = await album.assetCountAsync;
+      }
+
+      final videoAlbums = await PhotoManager.getAssetPathList(
+        type: RequestType.video,
+        hasAll: true,
+      );
+      if (videoAlbums.isNotEmpty) {
+        final album = videoAlbums.firstWhere((a) => a.isAll, orElse: () => videoAlbums.first);
+        videos = await album.assetCountAsync;
+      }
+
+      return (photos: photos, videos: videos);
+    } catch (_) {
+      return (photos: 0, videos: 0);
+    }
+  }
+
   static Future<Map<String, List<MediaItem>>> scanMediaByDate() async {
     final mediaMap = <String, List<MediaItem>>{};
     

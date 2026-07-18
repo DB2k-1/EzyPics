@@ -24,6 +24,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int _videoStorageBytes = 0;
   int _currentStreak = 0;
   int _daysUsedThisYear = 0;
+  int _totalPhotos = 0;
+  int _totalVideos = 0;
   bool _isLoading = true;
   bool _isPreparingReview = false;
 
@@ -61,6 +63,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final videoStorage = await StatsService.getVideoStorageRecovered();
     final streak = await StreakService.getCurrentStreak();
     final daysUsed = await StreakService.getDaysUsedThisYear();
+    final counts = await PhotoService.getMediaCounts();
 
     if (mounted) {
       setState(() {
@@ -70,10 +73,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         _videoStorageBytes = videoStorage;
         _currentStreak = streak;
         _daysUsedThisYear = daysUsed;
+        _totalPhotos = counts.photos;
+        _totalVideos = counts.videos;
         _isLoading = false;
       });
     }
   }
+
+  String _formatCount(int n) =>
+      n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}k' : '$n';
 
   @override
   void didChangeDependencies() {
@@ -93,7 +101,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       body: Column(
           children: [
             const LogoWidget(),
-            const SizedBox(height: 16), // Match gap between button and stats header
+            if (!_isLoading)
+              Padding(
+                padding: const EdgeInsets.only(top: 6, bottom: 2),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.photo, size: 13, color: Colors.grey[500]),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${_formatCount(_totalPhotos)} photos',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                    ),
+                    const SizedBox(width: 16),
+                    Icon(Icons.videocam, size: 13, color: Colors.grey[500]),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${_formatCount(_totalVideos)} videos',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 10),
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
