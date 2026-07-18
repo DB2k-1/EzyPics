@@ -31,14 +31,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _initApp();
-  }
-
-  Future<void> _initApp() async {
-    // Record today's usage just for opening the app. This ensures no-media days
-    // never break the streak — the user showed up. recordUsage() is idempotent
-    // so calling it again when a review completes is safe.
-    await StreakService.recordUsage();
     _loadStats();
     _initNotifications();
   }
