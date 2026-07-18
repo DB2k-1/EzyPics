@@ -53,12 +53,7 @@ class _DeletionConfirmationScreenState
   }
 
   Future<void> _handleDelete() async {
-    if (_selectedIds.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No items selected')),
-      );
-      return;
-    }
+    if (_selectedIds.isEmpty || _isDeleting) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -81,17 +76,39 @@ class _DeletionConfirmationScreenState
       ),
     );
 
-    if (confirmed != true) return;
+    if (confirmed != true || !context.mounted) return;
 
     setState(() => _isDeleting = true);
+
+    // Show spinner dialog immediately — appears on the next paint without
+    // waiting for a full widget rebuild cycle, so the user sees feedback
+    // the moment they confirm rather than after the dialog close animation.
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 20),
+              Expanded(
+                child: Text(
+                  'Verifying local and internet storage media data…',
+                  style: TextStyle(fontSize: 15),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
 
     final itemsToDelete = widget.mediaToDelete
         .where((item) => _selectedIds.contains(item.id))
         .toList();
-
-    // Yield one frame so the spinner paints before heavy work begins.
-    await Future.delayed(Duration.zero);
-    if (!context.mounted) return;
 
     int photosDeleted = 0;
     int videosDeleted = 0;
@@ -114,7 +131,7 @@ class _DeletionConfirmationScreenState
       final success = await PhotoService.deleteMediaItems(itemsToDelete);
 
       if (!context.mounted) return;
-      setState(() => _isDeleting = false);
+      Navigator.of(context).pop(); // dismiss spinner dialog
 
       if (success) {
         await StatsService.recordDeletions(
@@ -126,11 +143,11 @@ class _DeletionConfirmationScreenState
 
         if (context.mounted) {
           Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
-          // Clear cache after navigating so it doesn't delay the user seeing home.
           CacheCleanup.clearImageCache();
           CacheCleanup.clearAllDiskCaches();
         }
       } else {
+        setState(() => _isDeleting = false);
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Failed to delete items')),
@@ -139,6 +156,7 @@ class _DeletionConfirmationScreenState
       }
     } catch (e) {
       if (context.mounted) {
+        Navigator.of(context).pop(); // dismiss spinner dialog
         setState(() => _isDeleting = false);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Failed to delete items')),
@@ -346,18 +364,12 @@ class _DeletionConfirmationScreenState
                         backgroundColor: _selectedIds.isEmpty ? Colors.grey : Colors.red,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
-                      child: _isDeleting
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : Text(
-                              _selectedIds.isEmpty
-                                  ? 'No Items Selected'
-                                  : 'Delete ${_selectedIds.length} Item${_selectedIds.length != 1 ? 's' : ''}',
-                              style: const TextStyle(fontSize: 16),
-                            ),
+                      child: Text(
+                        _selectedIds.isEmpty
+                            ? 'No Items Selected'
+                            : 'Delete ${_selectedIds.length} Item${_selectedIds.length != 1 ? 's' : ''}',
+                        style: const TextStyle(fontSize: 16),
+                      ),
                     ),
                   ),
                 ],
@@ -366,35 +378,6 @@ class _DeletionConfirmationScreenState
           ),
         ],
           ),
-          if (_isDeleting)
-            Positioned.fill(
-              child: Container(
-                color: Colors.black54,
-                child: const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 48,
-                        height: 48,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 3,
-                          color: Colors.white,
-                        ),
-                      ),
-                      SizedBox(height: 16),
-                      Text(
-                        'Deleting…',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
         ],
       ),
     );
