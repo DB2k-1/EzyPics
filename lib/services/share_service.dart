@@ -7,7 +7,7 @@ import 'image_branding_service.dart';
 import '../models/media_item.dart';
 
 class ShareService {
-  static const String iosAppStoreUrl = 'itms-apps://itunes.apple.com/app/id6757226178';
+  static const String appStoreUrl = 'https://apps.apple.com/us/app/ezypics/id6757226178';
 
   /// Formats a date as "12th January 2022"
   static String _formatDateForShare(DateTime date) {
@@ -44,17 +44,10 @@ class ShareService {
   static Future<void> shareMedia(MediaItem mediaItem, {Rect? sharePositionOrigin}) async {
     try {
       final dateText = _formatDateForShare(mediaItem.creationTime);
-      String shareText = '\n\nTaken on $dateText and shared via EzyPics';
-      
-      // Add iOS App Store URL for iOS only
-      // Put URL on separate line with spacing to minimize rich preview prominence
-      if (Platform.isIOS) {
-        shareText += '\n\n$iosAppStoreUrl';
-        // Provide default sharePositionOrigin for iOS if not provided
-        // Default to top-right area where share icon typically is
-        if (sharePositionOrigin == null) {
-          sharePositionOrigin = const Rect.fromLTWH(300, 100, 1, 1);
-        }
+      String shareText = '\n\nTaken on $dateText and shared via EzyPics\n\n$appStoreUrl';
+
+      if (Platform.isIOS && sharePositionOrigin == null) {
+        sharePositionOrigin = const Rect.fromLTWH(300, 100, 1, 1);
       }
 
       if (mediaItem.isVideo) {
@@ -105,12 +98,10 @@ class ShareService {
         } finally {
           // Always schedule temp file cleanup so we don't leave files if share is cancelled or fails
           if (brandedFile != null) {
-            Future.delayed(const Duration(seconds: 5), () {
+            Future.delayed(const Duration(seconds: 5), () async {
               try {
-                brandedFile!.deleteSync();
-              } catch (e) {
-                // Ignore; CacheCleanup will remove on next startup
-              }
+                await brandedFile!.delete();
+              } catch (_) {}
             });
           }
         }
