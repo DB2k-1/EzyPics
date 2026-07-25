@@ -222,8 +222,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
         '/deletion-confirmation',
         arguments: {
           'mediaToDelete': toDelete,
-          'videoThumbnailCache': _videoThumbnailCache,
-          'imageThumbnailCache': _imageThumbnailCache,
+          // Pass copies so dispose().clear() on the originals doesn't wipe these.
+          'videoThumbnailCache': Map.of(_videoThumbnailCache),
+          'imageThumbnailCache': Map.of(_imageThumbnailCache),
         },
       );
     }

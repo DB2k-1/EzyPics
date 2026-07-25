@@ -70,61 +70,20 @@ class CacheCleanup {
       _log('$label: directory does not exist, skip');
       return;
     }
-    int filesDeleted = 0;
-    int dirsDeleted = 0;
-    int failed = 0;
-    int bytesFreed = 0;
-    final failures = <String>[];
-
     try {
-      final entities = dir.listSync();
+      final entities = await dir.list().toList();
       _log('$label: found ${entities.length} items in ${dir.path}');
-
       for (final entity in entities) {
         try {
-          if (entity is File) {
-            final len = entity.lengthSync();
-            entity.deleteSync();
-            filesDeleted++;
-            bytesFreed += len;
-            _log('$label: deleted file ${entity.path} ($len bytes)');
-          } else if (entity is Directory) {
-            final size = _dirSizeSync(entity);
-            entity.deleteSync(recursive: true);
-            dirsDeleted++;
-            bytesFreed += size;
-            _log('$label: deleted dir ${entity.path} ($size bytes)');
-          }
+          await entity.delete(recursive: true);
         } catch (e) {
-          failed++;
-          final msg = '${entity.path}: $e';
-          failures.add(msg);
-          _log('$label: FAILED to delete $msg');
+          _log('$label: FAILED to delete ${entity.path}: $e');
         }
       }
-
-      final mb = (bytesFreed / (1024 * 1024)).toStringAsFixed(2);
-      _log('$label: summary — $filesDeleted files, $dirsDeleted dirs removed, $mb MB freed, $failed failures');
-      if (failures.isNotEmpty) {
-        _log('$label: failures: $failures');
-      }
+      _log('$label: done');
     } catch (e) {
       _log('$label: _clearDirectory error: $e');
     }
-  }
-
-  static int _dirSizeSync(Directory dir) {
-    int total = 0;
-    try {
-      for (final entity in dir.listSync()) {
-        if (entity is File) {
-          total += entity.lengthSync();
-        } else if (entity is Directory) {
-          total += _dirSizeSync(entity);
-        }
-      }
-    } catch (_) {}
-    return total;
   }
 
   /// Legacy name: same as [clearAllDiskCaches]. Kept for existing call sites.
