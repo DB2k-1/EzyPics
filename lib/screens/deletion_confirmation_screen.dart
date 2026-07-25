@@ -55,29 +55,6 @@ class _DeletionConfirmationScreenState
   Future<void> _handleDelete() async {
     if (_selectedIds.isEmpty || _isDeleting) return;
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirm Deletion'),
-        content: Text(
-          'Are you sure you want to permanently delete ${_selectedIds.length} item(s)? This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !context.mounted) return;
-
     setState(() => _isDeleting = true);
 
     // Show spinner dialog immediately — appears on the next paint without
