@@ -795,6 +795,16 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     final currentMedia = _reviewMedia[_currentIndex];
     final decidedCount = _reviewDecisions.length;
 
+    // Running delete totals by year, in descending year order.
+    final deleteByYear = <int, int>{};
+    for (final item in _reviewMedia) {
+      if (_reviewDecisions[item.id] == false) {
+        deleteByYear[item.year] = (deleteByYear[item.year] ?? 0) + 1;
+      }
+    }
+    final totalToDelete = deleteByYear.values.fold(0, (a, b) => a + b);
+    final sortedYears = deleteByYear.keys.toList()..sort((a, b) => b.compareTo(a));
+
     return Column(
       key: const ValueKey('review'),
       children: [
@@ -945,6 +955,16 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
                       '$decidedCount of ${_reviewMedia.length} reviewed',
                       style: const TextStyle(fontSize: 12, color: Colors.grey),
                     ),
+                    if (totalToDelete > 0) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        sortedYears.length == 1
+                            ? '$totalToDelete to delete'
+                            : '${sortedYears.map((y) => '${deleteByYear[y]} ($y)').join(' + ')} = $totalToDelete to delete',
+                        style: const TextStyle(fontSize: 12, color: Colors.red),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                   ],
                 ),
               ),

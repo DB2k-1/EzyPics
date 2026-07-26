@@ -243,6 +243,15 @@ class _SwipeScreenState extends State<SwipeScreen> {
     final currentMedia = widget.media[_currentIndex];
     final decidedCount = _decisions.length;
 
+    final deleteByYear = <int, int>{};
+    for (final item in widget.media) {
+      if (_decisions[item.id] == false) {
+        deleteByYear[item.year] = (deleteByYear[item.year] ?? 0) + 1;
+      }
+    }
+    final totalToDelete = deleteByYear.values.fold(0, (a, b) => a + b);
+    final sortedYears = deleteByYear.keys.toList()..sort((a, b) => b.compareTo(a));
+
     return Scaffold(
       body: Column(
         children: [
@@ -374,6 +383,16 @@ class _SwipeScreenState extends State<SwipeScreen> {
                         '$decidedCount of ${widget.media.length} reviewed',
                         style: const TextStyle(fontSize: 12, color: Colors.grey),
                       ),
+                      if (totalToDelete > 0) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          sortedYears.length == 1
+                              ? '$totalToDelete to delete'
+                              : '${sortedYears.map((y) => '${deleteByYear[y]} ($y)').join(' + ')} = $totalToDelete to delete',
+                          style: const TextStyle(fontSize: 12, color: Colors.red),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                     ],
                   ),
                 ),
