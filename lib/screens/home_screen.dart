@@ -127,7 +127,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
-                  : SingleChildScrollView(
+                  : SafeArea(
+                      top: false,
+                      child: SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 16.0),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -376,6 +378,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ],
                       ),
                     ),
+                  ),
             ),
           ],
         ),

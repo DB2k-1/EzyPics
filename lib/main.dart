@@ -32,6 +32,11 @@ void main() async {
     DeviceOrientation.portraitUp,
   ]);
 
+  // Opt in to edge-to-edge on Android 15+ (SDK 35) and back-port the same
+  // behaviour to older Android versions for consistency. SafeArea widgets in
+  // each screen handle the system bar insets.
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
   runApp(const CacheCleanupAppWrapper());
 }
 
