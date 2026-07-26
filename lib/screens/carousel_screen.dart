@@ -559,6 +559,56 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     }
   }
   
+  Future<void> _skipCurrentYear() async {
+    if (_currentIndex >= _reviewMedia.length) return;
+    final year = _reviewMedia[_currentIndex].year;
+    final yearItems = _reviewMedia.where((m) => m.year == year).toList();
+    final photos = yearItems.where((m) => !m.isVideo).length;
+    final videos = yearItems.where((m) => m.isVideo).length;
+
+    final countText = (photos > 0 && videos > 0)
+        ? '$photos photos and $videos videos'
+        : photos > 0
+            ? '$photos photos'
+            : '$videos videos';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Skip $year?'),
+        content: Text('Would you like to skip $year ($countText)?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Skip'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final nextIndex = _reviewMedia.indexWhere((m) => m.year != year, _currentIndex);
+    final targetIndex = nextIndex == -1 ? _reviewMedia.length - 1 : nextIndex;
+    final skipCount = targetIndex - _currentIndex;
+    final duration = Duration(milliseconds: (skipCount * 40).clamp(600, 2000));
+
+    await _reviewPageController.animateToPage(
+      targetIndex,
+      duration: duration,
+      curve: Curves.linear,
+    );
+
+    if (nextIndex == -1 && mounted) {
+      Future.delayed(const Duration(milliseconds: 400), () {
+        if (mounted) _promptFinishReview();
+      });
+    }
+  }
+
   void _decideCurrentItem(bool keep) {
     if (_currentIndex >= _reviewMedia.length) return;
     final item = _reviewMedia[_currentIndex];
@@ -794,6 +844,11 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
 
     final currentMedia = _reviewMedia[_currentIndex];
     final decidedCount = _reviewDecisions.length;
+    final currentYear = currentMedia.year;
+    final currentYearTotal = _reviewMedia.where((m) => m.year == currentYear).length;
+    final nextYearIndex = _reviewMedia.indexWhere((m) => m.year != currentYear, _currentIndex);
+    final showSkipButton = currentYearTotal > 20 &&
+        (nextYearIndex != -1 || _currentIndex < _reviewMedia.length - 1);
 
     // Running delete totals by year, in descending year order.
     final deleteByYear = <int, int>{};
@@ -833,6 +888,22 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
                       color: Colors.black87,
                     ),
                   ),
+                  if (showSkipButton) ...[
+                    const SizedBox(width: 4),
+                    TextButton(
+                      onPressed: _skipCurrentYear,
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.orange,
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: Text(
+                        'Skip $currentYear',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ],
                   const SizedBox(width: 4),
                   TextButton(
                     onPressed: _onReviewEnd,

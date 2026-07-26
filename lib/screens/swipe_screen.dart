@@ -170,6 +170,56 @@ class _SwipeScreenState extends State<SwipeScreen> {
     }
   }
 
+  Future<void> _skipCurrentYear() async {
+    if (_currentIndex >= widget.media.length) return;
+    final year = widget.media[_currentIndex].year;
+    final yearItems = widget.media.where((m) => m.year == year).toList();
+    final photos = yearItems.where((m) => !m.isVideo).length;
+    final videos = yearItems.where((m) => m.isVideo).length;
+
+    final countText = (photos > 0 && videos > 0)
+        ? '$photos photos and $videos videos'
+        : photos > 0
+            ? '$photos photos'
+            : '$videos videos';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Skip $year?'),
+        content: Text('Would you like to skip $year ($countText)?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Skip'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final nextIndex = widget.media.indexWhere((m) => m.year != year, _currentIndex);
+    final targetIndex = nextIndex == -1 ? widget.media.length - 1 : nextIndex;
+    final skipCount = targetIndex - _currentIndex;
+    final duration = Duration(milliseconds: (skipCount * 40).clamp(600, 2000));
+
+    await _pageController.animateToPage(
+      targetIndex,
+      duration: duration,
+      curve: Curves.linear,
+    );
+
+    if (nextIndex == -1 && mounted) {
+      Future.delayed(const Duration(milliseconds: 400), () {
+        if (mounted) _promptFinishReview();
+      });
+    }
+  }
+
   void _decide(int index, bool keep) {
     setState(() {
       _decisions[widget.media[index].id] = keep;
@@ -242,6 +292,11 @@ class _SwipeScreenState extends State<SwipeScreen> {
 
     final currentMedia = widget.media[_currentIndex];
     final decidedCount = _decisions.length;
+    final currentYear = currentMedia.year;
+    final currentYearTotal = widget.media.where((m) => m.year == currentYear).length;
+    final nextYearIndex = widget.media.indexWhere((m) => m.year != currentYear, _currentIndex);
+    final showSkipButton = currentYearTotal > 20 &&
+        (nextYearIndex != -1 || _currentIndex < widget.media.length - 1);
 
     final deleteByYear = <int, int>{};
     for (final item in widget.media) {
@@ -273,6 +328,22 @@ class _SwipeScreenState extends State<SwipeScreen> {
                       '${_currentIndex + 1} of ${widget.media.length}',
                       style: const TextStyle(fontSize: 16),
                     ),
+                    if (showSkipButton) ...[
+                      const SizedBox(width: 4),
+                      TextButton(
+                        onPressed: _skipCurrentYear,
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.orange,
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Text(
+                          'Skip $currentYear',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                    ],
                     const SizedBox(width: 4),
                     TextButton(
                       onPressed: _finishReview,
