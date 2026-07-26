@@ -153,6 +153,13 @@ class PhotoService {
       final asset = await AssetEntity.fromId(item.id)
           .timeout(const Duration(seconds: 3), onTimeout: () => null);
       if (asset == null) return 0;
+      // Skip cloud-only files — calling asset.file on an iCloud-only asset
+      // triggers a download just to measure size, flooding the event loop and
+      // making the deletion screen unresponsive. Cloud items record 0 bytes,
+      // which is accurate: no local storage is freed for files not on-device.
+      final isLocal = await asset.isLocallyAvailable()
+          .timeout(const Duration(seconds: 2), onTimeout: () => false);
+      if (!isLocal) return 0;
       final file = await asset.file
           .timeout(const Duration(seconds: 3), onTimeout: () => null);
       if (file == null) return 0;
