@@ -11,7 +11,27 @@ import 'screens/home_screen.dart';
 import 'services/photo_service.dart';
 import 'models/media_item.dart';
 import 'utils/cache_cleanup.dart';
+import 'utils/screenshot_mode.dart';
 import 'services/notification_service.dart';
+
+/// Phones stay in portrait, so swiping through photos never rotates the
+/// screen by accident. Large screens (iPhone Duo open, foldables open,
+/// tablets) can rotate: they're often held in landscape, and Apple and Google
+/// both expect apps to fill them in any orientation.
+bool? _allowsRotation;
+void _applyOrientationPolicy() {
+  final views = WidgetsBinding.instance.platformDispatcher.views;
+  if (views.isEmpty) return;
+  final view = views.first;
+  if (view.physicalSize.isEmpty) return;
+  final Size size = view.physicalSize / view.devicePixelRatio;
+  final bool allow = size.shortestSide >= 600;
+  if (allow == _allowsRotation) return;
+  _allowsRotation = allow;
+  SystemChrome.setPreferredOrientations(
+    allow ? const <DeviceOrientation>[] : const [DeviceOrientation.portraitUp],
+  );
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,10 +47,7 @@ void main() async {
 
   await NotificationService.initialize();
 
-  // Force portrait mode
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-  ]);
+  _applyOrientationPolicy();
 
   // Opt in to edge-to-edge on Android 15+ (SDK 35) and back-port the same
   // behaviour to older Android versions for consistency. SafeArea widgets in
@@ -63,6 +80,10 @@ class _CacheCleanupAppWrapperState extends State<CacheCleanupAppWrapper>
     super.dispose();
   }
 
+  // Opening or closing an iPhone Duo or a foldable changes the screen size.
+  @override
+  void didChangeMetrics() => _applyOrientationPolicy();
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
@@ -87,6 +108,7 @@ class EzyPicsApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'EzyPics',
+      debugShowCheckedModeBanner: !screenshotMode,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
@@ -178,7 +200,17 @@ class _InitialScreenState extends State<InitialScreen> {
         _isChecking = false;
       });
       if (hasPermission) {
-        Navigator.of(context).pushReplacementNamed('/home');
+        switch (screenshotView) {
+          case 'review':
+            Navigator.of(context).pushReplacementNamed(
+              '/carousel',
+              arguments: screenshotDate.isEmpty ? null : {'dateKey': screenshotDate},
+            );
+          case 'calendar':
+            Navigator.of(context).pushReplacementNamed('/settings');
+          default:
+            Navigator.of(context).pushReplacementNamed('/home');
+        }
       }
     }
   }

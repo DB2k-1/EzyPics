@@ -9,6 +9,8 @@ import '../utils/date_utils.dart';
 import '../services/notification_service.dart';
 import '../services/streak_service.dart';
 import '../widgets/logo_widget.dart';
+import '../widgets/review_layout.dart';
+import '../widgets/review_summary.dart';
 import '../widgets/review_card.dart';
 
 class SwipeScreen extends StatefulWidget {
@@ -30,6 +32,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
   final Map<String, bool> _decisions = {};
   // viewportFraction < 1 shows ~9% of adjacent images at each edge of the list
   final PageController _pageController = PageController(viewportFraction: 0.82);
+  // Keeps the pager's position when the layout changes (Duo opened or
+  // closed, foldable unfolded).
+  final GlobalKey _pagerKey = GlobalKey();
   final Map<String, Uint8List> _videoThumbnailCache = {};
   final Map<String, Uint8List> _imageThumbnailCache = {};
   final List<String> _imageThumbnailOrder = [];
@@ -280,6 +285,19 @@ class _SwipeScreenState extends State<SwipeScreen> {
     }
   }
 
+  /// Jumps the pager to the first item from [year] (year chips beside the
+  /// photo on wide screens).
+  void _jumpToYear(int year) {
+    final index = widget.media.indexWhere((m) => m.year == year);
+    if (index == -1 || index == _currentIndex) return;
+    final distance = (index - _currentIndex).abs();
+    _pageController.animateToPage(
+      index,
+      duration: Duration(milliseconds: (distance * 40).clamp(300, 1200)),
+      curve: Curves.easeInOut,
+    );
+  }
+
   void _handleButtonDecide(bool keep) {
     _decide(_currentIndex, keep);
   }
@@ -311,60 +329,69 @@ class _SwipeScreenState extends State<SwipeScreen> {
       body: Column(
         children: [
           LogoWidget(
+            maxHeight: ReviewLayout.bannerMaxHeight(context),
             onTap: () => Navigator.of(context).pushReplacementNamed('/home'),
           ),
-          Padding(
+          Expanded(
+            child: ReviewLayout(
+            topOffset: ReviewLayout.bannerHeight(context),
+            header: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  AppDateUtils.formatDateForDisplay(widget.dateKey, year: currentMedia.year),
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                ),
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      '${_currentIndex + 1} of ${widget.media.length}',
-                      style: const TextStyle(fontSize: 16),
+                      AppDateUtils.formatDateForDisplay(widget.dateKey, year: currentMedia.year),
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                     ),
-                    if (showSkipButton) ...[
-                      const SizedBox(width: 4),
-                      TextButton(
-                        onPressed: _skipCurrentYear,
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.orange,
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${_currentIndex + 1} of ${widget.media.length}',
+                          style: const TextStyle(fontSize: 16),
                         ),
-                        child: Text(
-                          'Skip $currentYear',
-                          style: const TextStyle(fontSize: 13),
+                        const SizedBox(width: 4),
+                        TextButton(
+                          onPressed: _finishReview,
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.blue,
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: const Text(
+                            'Done',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          ),
                         ),
-                      ),
-                    ],
-                    const SizedBox(width: 4),
-                    TextButton(
-                      onPressed: _finishReview,
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.blue,
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: const Text(
-                        'Done',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                      ),
+                      ],
                     ),
                   ],
                 ),
+                if (showSkipButton)
+                  TextButton(
+                    onPressed: _skipCurrentYear,
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.orange,
+                      padding: const EdgeInsets.only(top: 2),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text(
+                      'Skip $currentYear',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
               ],
             ),
           ),
-          Expanded(
-            child: PageView.builder(
+            pager: KeyedSubtree(
+              key: _pagerKey,
+              child: PageView.builder(
               controller: _pageController,
               scrollDirection: Axis.vertical,
               physics: const BouncingScrollPhysics(),
@@ -412,33 +439,43 @@ class _SwipeScreenState extends State<SwipeScreen> {
               },
             ),
           ),
-          SafeArea(
-            top: false,
-            child: Column(
+            details: ReviewSummary(
+              media: widget.media,
+              decisions: _decisions,
+              currentYear: currentYear,
+              onYearTap: _jumpToYear,
+            ),
+            controls: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Padding(
                   padding: EdgeInsets.fromLTRB(40, 16, 40, Platform.isAndroid ? 8 : 16),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      ElevatedButton(
-                        onPressed: () => _handleButtonDecide(false),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                  // Both buttons shrink together on narrow screens (iPhone SE, Duo's
+                  // outer display) instead of overflowing.
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ElevatedButton(
+                          onPressed: () => _handleButtonDecide(false),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                          ),
+                          child: const Text('❌ Delete', style: TextStyle(fontSize: 18)),
                         ),
-                        child: const Text('❌ Delete', style: TextStyle(fontSize: 18)),
-                      ),
-                      ElevatedButton(
-                        onPressed: () => _handleButtonDecide(true),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                        const SizedBox(width: 16),
+                        ElevatedButton(
+                          onPressed: () => _handleButtonDecide(true),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                          ),
+                          child: const Text('✅ Keep', style: TextStyle(fontSize: 18)),
                         ),
-                        child: const Text('✅ Keep', style: TextStyle(fontSize: 18)),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
                 Padding(
@@ -468,6 +505,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
                   ),
                 ),
               ],
+            ),
             ),
           ),
         ],

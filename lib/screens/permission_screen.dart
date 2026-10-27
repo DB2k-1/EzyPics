@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/photo_service.dart';
+import '../utils/adaptive_layout.dart';
 import '../widgets/logo_widget.dart';
 
 class PermissionScreen extends StatelessWidget {
@@ -13,10 +14,13 @@ class PermissionScreen extends StatelessWidget {
             children: [
             const LogoWidget(),
             Expanded(
-              child: Padding(
+              child: LeadingPaneCenter(
+                child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: SingleChildScrollView(
                 padding: const EdgeInsets.all(30.0),
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text(
                       'Welcome to EzyPics',
@@ -69,6 +73,8 @@ class PermissionScreen extends StatelessWidget {
                     ),
                   ],
                 ),
+              ),
+              ),
               ),
             ),
           ],

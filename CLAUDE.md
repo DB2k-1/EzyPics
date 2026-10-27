@@ -125,7 +125,10 @@ See `PERFORMANCE_GUIDE.md` for full details. Key patterns:
 
 ### Platform Notes
 
-- Portrait-only (locked in `main()` via `SystemChrome.setPreferredOrientations`)
+- Orientation: phone-sized screens (shortest side < 600pt) are locked to portrait; large screens (iPhone Duo open, foldables open, tablets) can rotate. See `_applyOrientationPolicy()` in `main.dart`, re-run on every screen-size change
+- Large and folding screens: `PaneLayout.of(context)` (`lib/utils/adaptive_layout.dart`) picks single pane, two panes (wide windows; split at the hinge on Android, at the middle otherwise, which is where iPhone Duo folds) or tabletop (half-folded, fold across the screen; Android only). Every screen uses it; `ReviewLayout` arranges the review screens. iOS doesn't report the fold to Flutter
+- `LogoWidget` banner is capped at 25% of screen height; when capped, the artwork is centred over the left pane with a blurred fill
+- App Store screenshots: `--dart-define=SCREENSHOT_MODE=home|review|calendar` (optional `SCREENSHOT_DATE=MM-DD`) hides the debug banner, skips the notification prompt and opens that screen. See `lib/utils/screenshot_mode.dart`
 - Android: uses `0.55` height multiplier for swipe cards (vs `0.6` on iOS) to account for navigation bar
 - iOS share sheet requires `sharePositionOrigin` rect — `HomeScreen` uses `RenderBox` to get the share button's position
 - iCloud-only assets are filtered out before deletion via `PhotoService.filterToLocallyAvailable()`

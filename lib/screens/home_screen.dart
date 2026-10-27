@@ -8,6 +8,8 @@ import '../services/notification_service.dart';
 import '../services/photo_service.dart';
 import '../utils/date_utils.dart';
 import '../utils/cache_cleanup.dart';
+import '../utils/screenshot_mode.dart';
+import '../utils/adaptive_layout.dart';
 import '../widgets/logo_widget.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -38,6 +40,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _initNotifications() async {
+    if (screenshotMode) return;
     await NotificationService.requestPermission();
     await NotificationService.scheduleReminder();
   }
@@ -97,292 +100,351 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final layout = PaneLayout.of(context);
     return Scaffold(
       body: Column(
-          children: [
-            const LogoWidget(),
-            if (!_isLoading)
-              Padding(
-                padding: const EdgeInsets.only(top: 6, bottom: 2),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.photo, size: 13, color: Colors.grey[500]),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${_formatCount(_totalPhotos)} photos',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-                    ),
-                    const SizedBox(width: 16),
-                    Icon(Icons.videocam, size: 13, color: Colors.grey[500]),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${_formatCount(_totalVideos)} videos',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-                    ),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 10),
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : SafeArea(
-                      top: false,
-                      child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Review Media button - white bubble with app icon
-                          InkWell(
-                            onTap: _isPreparingReview
-                                ? null
-                                : () async {
-                                    setState(() => _isPreparingReview = true);
-                                    try {
-                                      // Complete storage cleanup before showing media
-                                      await CacheCleanup.clearAllDiskCaches();
-                                      if (!mounted) return;
-                                      // Check if there's media for today's date
-                                      final todayKey = AppDateUtils.getTodayDateKey();
-                                      final mediaMap = await PhotoService.scanMediaByDate();
-                                      if (!mounted) return;
-                                      final mediaForToday = mediaMap[todayKey] ?? [];
-                                      if (mediaForToday.isEmpty) {
-                                        // No media today — still credit the streak and
-                                        // cancel today's reminder; the user showed up.
-                                        await StreakService.recordUsage();
-                                        await NotificationService.cancelReminder();
-                                        if (!mounted) return;
-                                        Navigator.of(context).pushReplacementNamed('/settings');
-                                      } else {
-                                        Navigator.of(context).pushReplacementNamed('/carousel');
-                                      }
-                                    } finally {
-                                      if (mounted) setState(() => _isPreparingReview = false);
-                                    }
-                                  },
-                            borderRadius: BorderRadius.circular(12),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                border: Border.all(
-                                  color: Colors.blue,
-                                  width: 4.0, // Same as app border
-                                ),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16.0,
-                                vertical: 12.0,
-                              ),
-                              child: Row(
-                                children: [
-                                  SizedBox(
-                                    width: 48,
-                                    height: 48,
-                                    child: _isPreparingReview
-                                        ? const Center(
-                                            child: SizedBox(
-                                              width: 28,
-                                              height: 28,
-                                              child: CircularProgressIndicator(strokeWidth: 2),
-                                            ),
-                                          )
-                                        : ClipRRect(
-                                            borderRadius: BorderRadius.circular(8),
-                                            child: Image.asset(
-                                              'assets/app_icon.png',
-                                              fit: BoxFit.cover,
-                                            ),
-                                          ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Text(
-                                    _isPreparingReview ? 'Preparing…' : 'Review Media',
-                                    style: const TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.black87,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          // Streak card
-                          Card(
-                            elevation: 2,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            child: Padding(
-                              padding: const EdgeInsets.all(12.0),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: Colors.orange.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: const Icon(Icons.local_fire_department, color: Colors.orange, size: 28),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      _currentStreak > 0
-                                          ? '$_currentStreak day streak'
-                                          : 'Start your streak!',
-                                      style: const TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                  Builder(
-                                    builder: (context) {
-                                      return IconButton(
-                                        icon: Icon(
-                                          Platform.isIOS ? CupertinoIcons.share : Icons.share,
-                                          color: Colors.orange,
-                                        ),
-                                        onPressed: () async {
-                                          final message =
-                                              "I'm on a $_currentStreak-day streak using EzyPics! Download it here:\nhttps://apps.apple.com/us/app/ezypics/id6757226178";
-                                          if (Platform.isIOS) {
-                                            final RenderBox? box =
-                                                context.findRenderObject() as RenderBox?;
-                                            if (box != null) {
-                                              final position = box.localToGlobal(Offset.zero);
-                                              final size = box.size;
-                                              try {
-                                                await Share.share(
-                                                  message,
-                                                  sharePositionOrigin: Rect.fromLTWH(
-                                                    position.dx,
-                                                    position.dy,
-                                                    size.width,
-                                                    size.height,
-                                                  ),
-                                                );
-                                              } catch (e) {
-                                                if (mounted) {
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    SnackBar(content: Text('Error sharing: $e')),
-                                                  );
-                                                }
-                                              }
-                                              return;
-                                            }
-                                          }
-                                          await Share.share(message);
-                                        },
-                                        tooltip: 'Share streak',
-                                      );
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          // Days used this year row
-                          InkWell(
-                            onTap: () => Navigator.of(context).pushNamed('/settings'),
-                            borderRadius: BorderRadius.circular(12),
-                            child: Card(
-                              elevation: 2,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: Colors.teal.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Icon(Icons.calendar_today, color: Colors.teal, size: 22),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Text(
-                                      '$_daysUsedThisYear days this year',
-                                      style: const TextStyle(fontSize: 16),
-                                    ),
-                                    const Spacer(),
-                                    const Icon(Icons.chevron_right, color: Colors.grey),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Storage Recovery Stats',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
+        children: [
+          const LogoWidget(),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : SafeArea(
+                    top: false,
+                    child: layout.twoPane
+                        ? Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(
-                                child: _buildStatCard(
-                                  icon: Icons.photo,
-                                  title: 'Photos',
-                                  value: '$_photosDeleted',
-                                  subtitle: StatsService.formatBytes(_photoStorageBytes),
-                                  color: Colors.blue,
-                                ),
+                              // Left pane: review and streak. Right pane: stats.
+                              SizedBox(
+                                width: layout.leading,
+                                child: _scrollingColumn([
+                                  _buildMediaCounts(),
+                                  const SizedBox(height: 10),
+                                  _buildReviewButton(),
+                                  const SizedBox(height: 16),
+                                  _buildStreakCard(),
+                                  const SizedBox(height: 8),
+                                  _buildDaysCard(),
+                                ]),
                               ),
-                              const SizedBox(width: 12),
+                              SizedBox(width: layout.gap),
                               Expanded(
-                                child: _buildStatCard(
-                                  icon: Icons.videocam,
-                                  title: 'Videos',
-                                  value: '$_videosDeleted',
-                                  subtitle: StatsService.formatBytes(_videoStorageBytes),
-                                  color: Colors.purple,
-                                ),
+                                child: _scrollingColumn([
+                                  const SizedBox(height: 10),
+                                  ..._buildStatsSection(),
+                                  const SizedBox(height: 24),
+                                  _buildDateSelectorButton(),
+                                ]),
                               ),
                             ],
+                          )
+                        : SingleColumn(
+                            child: _scrollingColumn([
+                              _buildMediaCounts(),
+                              const SizedBox(height: 10),
+                              _buildReviewButton(),
+                              const SizedBox(height: 16),
+                              _buildStreakCard(),
+                              const SizedBox(height: 8),
+                              _buildDaysCard(),
+                              const SizedBox(height: 16),
+                              ..._buildStatsSection(),
+                              const SizedBox(height: 24),
+                              _buildDateSelectorButton(),
+                            ]),
                           ),
-                          const SizedBox(height: 12),
-                          _buildStatCard(
-                            icon: Icons.storage,
-                            title: 'Total Storage Recovered',
-                            value: StatsService.formatBytes(_photoStorageBytes + _videoStorageBytes),
-                            subtitle: '', // Removed redundant subtitle
-                            color: Colors.green,
-                            showShareButton: true,
-                            onShare: () => _shareStats(),
-                          ),
-                          const SizedBox(height: 24),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                            child: OutlinedButton.icon(
-                              onPressed: () {
-                                Navigator.of(context).pushNamed('/settings');
-                              },
-                              icon: const Icon(Icons.calendar_today),
-                              label: const Text('Date Selector'),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                              ),
-                            ),
-                          ),
-                        ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _scrollingColumn(List<Widget> children) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: children,
+      ),
+    );
+  }
+
+  Widget _buildMediaCounts() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, bottom: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.photo, size: 13, color: Colors.grey[500]),
+          const SizedBox(width: 4),
+          Text(
+            '${_formatCount(_totalPhotos)} photos',
+            style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+          ),
+          const SizedBox(width: 16),
+          Icon(Icons.videocam, size: 13, color: Colors.grey[500]),
+          const SizedBox(width: 4),
+          Text(
+            '${_formatCount(_totalVideos)} videos',
+            style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// White bubble with the app icon.
+  Widget _buildReviewButton() {
+    return InkWell(
+      onTap: _isPreparingReview
+          ? null
+          : () async {
+              setState(() => _isPreparingReview = true);
+              try {
+                // Complete storage cleanup before showing media
+                await CacheCleanup.clearAllDiskCaches();
+                if (!mounted) return;
+                // Check if there's media for today's date
+                final todayKey = AppDateUtils.getTodayDateKey();
+                final mediaMap = await PhotoService.scanMediaByDate();
+                if (!mounted) return;
+                final mediaForToday = mediaMap[todayKey] ?? [];
+                if (mediaForToday.isEmpty) {
+                  // No media today — still credit the streak and
+                  // cancel today's reminder; the user showed up.
+                  await StreakService.recordUsage();
+                  await NotificationService.cancelReminder();
+                  if (!mounted) return;
+                  Navigator.of(context).pushReplacementNamed('/settings');
+                } else {
+                  Navigator.of(context).pushReplacementNamed('/carousel');
+                }
+              } finally {
+                if (mounted) setState(() => _isPreparingReview = false);
+              }
+            },
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(
+            color: Colors.blue,
+            width: 4.0, // Same as app border
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 16.0,
+          vertical: 12.0,
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: _isPreparingReview
+                  ? const Center(
+                      child: SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.asset(
+                        'assets/app_icon.png',
+                        fit: BoxFit.cover,
                       ),
                     ),
-                  ),
+            ),
+            const SizedBox(width: 16),
+            Text(
+              _isPreparingReview ? 'Preparing…' : 'Review Media',
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
             ),
           ],
         ),
-      );
+      ),
+    );
+  }
+
+  Widget _buildStreakCard() {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.local_fire_department, color: Colors.orange, size: 28),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _currentStreak > 0
+                    ? '$_currentStreak day streak'
+                    : 'Start your streak!',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            Builder(
+              builder: (context) {
+                return IconButton(
+                  icon: Icon(
+                    Platform.isIOS ? CupertinoIcons.share : Icons.share,
+                    color: Colors.orange,
+                  ),
+                  onPressed: () async {
+                    final message =
+                        "I'm on a $_currentStreak-day streak using EzyPics! Download it here:\nhttps://apps.apple.com/us/app/ezypics/id6757226178";
+                    if (Platform.isIOS) {
+                      final RenderBox? box =
+                          context.findRenderObject() as RenderBox?;
+                      if (box != null) {
+                        final position = box.localToGlobal(Offset.zero);
+                        final size = box.size;
+                        try {
+                          await Share.share(
+                            message,
+                            sharePositionOrigin: Rect.fromLTWH(
+                              position.dx,
+                              position.dy,
+                              size.width,
+                              size.height,
+                            ),
+                          );
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error sharing: $e')),
+                            );
+                          }
+                        }
+                        return;
+                      }
+                    }
+                    await Share.share(message);
+                  },
+                  tooltip: 'Share streak',
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Days used this year; opens the date selector.
+  Widget _buildDaysCard() {
+    return InkWell(
+      onTap: () => Navigator.of(context).pushNamed('/settings'),
+      borderRadius: BorderRadius.circular(12),
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.teal.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.calendar_today, color: Colors.teal, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                '$_daysUsedThisYear days this year',
+                style: const TextStyle(fontSize: 16),
+              ),
+              const Spacer(),
+              const Icon(Icons.chevron_right, color: Colors.grey),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildStatsSection() {
+    return [
+      const Text(
+        'Storage Recovery Stats',
+        style: TextStyle(
+          fontSize: 24,
+          fontWeight: FontWeight.bold,
+        ),
+        textAlign: TextAlign.center,
+      ),
+      const SizedBox(height: 12),
+      Row(
+        children: [
+          Expanded(
+            child: _buildStatCard(
+              icon: Icons.photo,
+              title: 'Photos',
+              value: '$_photosDeleted',
+              subtitle: StatsService.formatBytes(_photoStorageBytes),
+              color: Colors.blue,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _buildStatCard(
+              icon: Icons.videocam,
+              title: 'Videos',
+              value: '$_videosDeleted',
+              subtitle: StatsService.formatBytes(_videoStorageBytes),
+              color: Colors.purple,
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      _buildStatCard(
+        icon: Icons.storage,
+        title: 'Total Storage Recovered',
+        value: StatsService.formatBytes(_photoStorageBytes + _videoStorageBytes),
+        subtitle: '', // Removed redundant subtitle
+        color: Colors.green,
+        showShareButton: true,
+        onShare: () => _shareStats(),
+      ),
+    ];
+  }
+
+  Widget _buildDateSelectorButton() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: OutlinedButton.icon(
+        onPressed: () {
+          Navigator.of(context).pushNamed('/settings');
+        },
+        icon: const Icon(Icons.calendar_today),
+        label: const Text('Date Selector'),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+        ),
+      ),
+    );
   }
 
   Future<void> _shareStats() async {

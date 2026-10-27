@@ -8,6 +8,7 @@ import '../services/streak_service.dart';
 import '../services/test_photo_generator.dart';
 import '../utils/date_utils.dart';
 import '../utils/cache_cleanup.dart';
+import '../utils/adaptive_layout.dart';
 import '../widgets/logo_widget.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -260,65 +261,125 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final layout = PaneLayout.of(context);
     return Scaffold(
       body: Column(
           children: [
           LogoWidget(
             onTap: () => Navigator.of(context).pushReplacementNamed('/home'),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            child: Row(
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pushReplacementNamed('/home'),
-                  child: const Text('← Back'),
-                ),
-                const Spacer(),
-                GestureDetector(
-                  onTap: () {
-                    _selectDateTapCount++;
-                    if (_selectDateTapCount >= 6) {
-                      _selectDateTapCount = 0; // Reset counter
-                      _showTestPhotoDialog();
-                    }
-                  },
-                  child: const Text(
-                    'Select Date',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const Spacer(),
-                // Spacer to balance the layout (bug button removed)
-                const SizedBox(width: 48),
-              ],
+          Expanded(
+            child: SafeArea(
+              top: false,
+              bottom: false,
+              child: _isLoading
+                  ? Column(
+                      children: [
+                        _buildHeader(),
+                        const Expanded(child: Center(child: CircularProgressIndicator())),
+                      ],
+                    )
+                  : layout.twoPane
+                      // Calendar in the left pane, reminders in the right.
+                      ? Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(
+                              width: layout.leading,
+                              child: Column(
+                                children: [
+                                  _buildHeader(),
+                                  Expanded(
+                                    child: SingleChildScrollView(
+                                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                      child: _buildCalendarCard(),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            SizedBox(width: layout.gap),
+                            Expanded(
+                              child: SafeArea(
+                                top: false,
+                                left: false,
+                                child: SingleChildScrollView(
+                                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                                  child: _buildNotifSettings(),
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      : SingleColumn(
+                          child: Column(
+                            children: [
+                              _buildHeader(),
+                              Expanded(
+                                child: SingleChildScrollView(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(16.0),
+                                    child: Column(
+                                      children: [
+                                        _buildCalendarCard(),
+                                        const SizedBox(height: 16),
+                                        _buildNotifSettings(),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
             ),
           ),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : SingleChildScrollView(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        children: [
-                          Card(
-                            child: Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: _buildCalendar(),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          _buildNotifSettings(),
-                        ],
-                      ),
-                    ),
-                  ),
-          ),
         ],
+      ),
+    );
+  }
+
+  /// Back button and the "Select Date" title. Tapping the title six times
+  /// opens the hidden test photo generator.
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Row(
+        children: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pushReplacementNamed('/home'),
+            child: const Text('← Back'),
+          ),
+          const Spacer(),
+          GestureDetector(
+            onTap: () {
+              _selectDateTapCount++;
+              if (_selectDateTapCount >= 6) {
+                _selectDateTapCount = 0; // Reset counter
+                _showTestPhotoDialog();
+              }
+            },
+            child: const Text(
+              'Select Date',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const Spacer(),
+          // Spacer to balance the layout (bug button removed)
+          const SizedBox(width: 48),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCalendarCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: _buildCalendar(),
       ),
     );
   }

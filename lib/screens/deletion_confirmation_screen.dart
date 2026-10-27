@@ -6,6 +6,7 @@ import '../models/media_item.dart';
 import '../services/photo_service.dart';
 import '../services/stats_service.dart';
 import '../utils/cache_cleanup.dart';
+import '../utils/adaptive_layout.dart';
 import '../widgets/logo_widget.dart';
 
 class DeletionConfirmationScreen extends StatefulWidget {
@@ -238,122 +239,233 @@ class _DeletionConfirmationScreenState
 
   @override
   Widget build(BuildContext context) {
+    final layout = PaneLayout.of(context);
     return Scaffold(
-      body: Stack(
+      body: Column(
         children: [
-          Column(
-          children: [
           LogoWidget(
             onTap: () => Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false),
           ),
-          Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              children: [
-                const Text(
-                  'Review Items to Delete',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
+          Expanded(
+            child: layout.twoPane
+                // Thumbnails in the left pane; title and buttons in the right.
+                ? SafeArea(
+                    top: false,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(width: layout.leading, child: _buildGrid(3)),
+                        SizedBox(width: layout.gap),
+                        Expanded(
+                          child: Center(
+                            child: SingleChildScrollView(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [_buildTitle(), _buildButtons(), _buildBreakdown()],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : SafeArea(
+                    top: false,
+                    bottom: false,
+                    child: Column(
+                      children: [
+                        _buildTitle(),
+                        Expanded(
+                          child: LayoutBuilder(
+                            // Three columns on phones, four on wider screens
+                            // (an even count keeps a gap on the Duo's fold).
+                            builder: (context, constraints) => _buildGrid(
+                              constraints.maxWidth < PaneLayout.maxSingleColumnWidth ? 3 : 4,
+                            ),
+                          ),
+                        ),
+                        // Bottom controls with Android-safe padding
+                        SafeArea(top: false, child: _buildButtons()),
+                      ],
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTitle() {
+    return Padding(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        children: [
+          const Text(
+            'Review Items to Delete',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${_selectedIds.length} of ${widget.mediaToDelete.length} selected',
+            style: const TextStyle(fontSize: 16),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGrid(int crossAxisCount) {
+    return GridView.builder(
+      padding: const EdgeInsets.all(10),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        crossAxisSpacing: 5,
+        mainAxisSpacing: 5,
+      ),
+      itemCount: widget.mediaToDelete.length,
+      itemBuilder: (context, index) {
+        final item = widget.mediaToDelete[index];
+        final isSelected = _selectedIds.contains(item.id);
+        return GestureDetector(
+          onTap: () => _toggleSelection(item),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned.fill(
+                child: _buildThumbnail(item),
+              ),
+              if (isSelected)
+                const Positioned(
+                  top: 5,
+                  right: 5,
+                  child: CircleAvatar(
+                    backgroundColor: Colors.red,
+                    child: Icon(Icons.check, color: Colors.white),
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  '${_selectedIds.length} of ${widget.mediaToDelete.length} selected',
-                  style: const TextStyle(fontSize: 16),
+              if (item.isVideo)
+                const Positioned(
+                  bottom: 5,
+                  left: 5,
+                  child: Icon(Icons.play_circle, color: Colors.white),
                 ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// What's selected, by type and by year. Shown beside the thumbnails on
+  /// wide screens, where the right pane has room.
+  Widget _buildBreakdown() {
+    final selected = widget.mediaToDelete.where((m) => _selectedIds.contains(m.id)).toList();
+    final videos = selected.where((m) => m.isVideo).length;
+    final photos = selected.length - videos;
+    final byYear = <int, int>{};
+    for (final m in selected) {
+      byYear[m.year] = (byYear[m.year] ?? 0) + 1;
+    }
+    final years = byYear.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    Widget tile(IconData icon, String label, int value, Color color) => Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                Icon(icon, color: color, size: 20),
+                const SizedBox(height: 4),
+                Text('$value', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
+                Text(label, style: TextStyle(fontSize: 12, color: Colors.grey[700])),
               ],
             ),
           ),
-          Expanded(
-            child: GridView.builder(
-              padding: const EdgeInsets.all(10),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 5,
-                mainAxisSpacing: 5,
-              ),
-              itemCount: widget.mediaToDelete.length,
-              itemBuilder: (context, index) {
-                final item = widget.mediaToDelete[index];
-                final isSelected = _selectedIds.contains(item.id);
-                return GestureDetector(
-                  onTap: () => _toggleSelection(item),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Positioned.fill(
-                        child: _buildThumbnail(item),
-                      ),
-                      if (isSelected)
-                        const Positioned(
-                          top: 5,
-                          right: 5,
-                          child: CircleAvatar(
-                            backgroundColor: Colors.red,
-                            child: Icon(Icons.check, color: Colors.white),
-                          ),
-                        ),
-                      if (item.isVideo)
-                        const Positioned(
-                          bottom: 5,
-                          left: 5,
-                          child: Icon(Icons.play_circle, color: Colors.white),
-                        ),
-                    ],
-                  ),
-                );
-              },
+        );
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 420),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                tile(Icons.photo, 'Photos', photos, Colors.blue),
+                const SizedBox(width: 8),
+                tile(Icons.videocam, 'Videos', videos, Colors.purple),
+              ],
             ),
-          ),
-          // Bottom controls with Android-safe padding
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                20.0,
-                20.0,
-                20.0,
-                Platform.isAndroid ? 8.0 : 20.0,
-              ),
-              child: Row(
+            if (years.length > 1) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _isDeleting
-                          ? null
-                          : () {
-                              Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
-                            },
-                      child: const Text('Cancel'),
+                  for (final y in years)
+                    Chip(
+                      label: Text('$y  ·  ${byYear[y]}'),
+                      visualDensity: VisualDensity.compact,
+                      backgroundColor: Colors.white,
+                      side: BorderSide(color: Colors.grey.shade300),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    flex: 2,
-                    child: ElevatedButton(
-                      onPressed: _isDeleting
-                          ? null
-                          : (_selectedIds.isEmpty
-                              ? null
-                              : _handleDelete),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _selectedIds.isEmpty ? Colors.grey : Colors.red,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                      child: Text(
-                        _selectedIds.isEmpty
-                            ? 'No Items Selected'
-                            : 'Delete ${_selectedIds.length} Item${_selectedIds.length != 1 ? 's' : ''}',
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                    ),
-                  ),
                 ],
               ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildButtons() {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        20.0,
+        20.0,
+        20.0,
+        Platform.isAndroid ? 8.0 : 20.0,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: _isDeleting
+                  ? null
+                  : () {
+                      Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
+                    },
+              child: const Text('Cancel'),
             ),
           ),
-        ],
+          const SizedBox(width: 10),
+          Expanded(
+            flex: 2,
+            child: ElevatedButton(
+              onPressed: _isDeleting
+                  ? null
+                  : (_selectedIds.isEmpty
+                      ? null
+                      : _handleDelete),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _selectedIds.isEmpty ? Colors.grey : Colors.red,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: Text(
+                _selectedIds.isEmpty
+                    ? 'No Items Selected'
+                    : 'Delete ${_selectedIds.length} Item${_selectedIds.length != 1 ? 's' : ''}',
+                style: const TextStyle(fontSize: 16),
+              ),
+            ),
           ),
         ],
       ),

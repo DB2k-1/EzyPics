@@ -12,7 +12,10 @@ import '../services/streak_service.dart';
 import '../utils/cache_cleanup.dart';
 import '../utils/date_utils.dart';
 import '../utils/performance_logger.dart';
+import '../utils/adaptive_layout.dart';
 import '../widgets/logo_widget.dart';
+import '../widgets/review_layout.dart';
+import '../widgets/review_summary.dart';
 import '../widgets/year_preview_card.dart';
 import '../widgets/review_card.dart';
 
@@ -46,6 +49,9 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
   /// false = delete, true = keep. Absent = undecided (treated as keep on finish).
   final Map<String, bool> _reviewDecisions = {};
   final PageController _reviewPageController = PageController(viewportFraction: 0.82);
+  // Keeps the review pager's position when the layout changes (Duo opened or
+  // closed, foldable unfolded).
+  final GlobalKey _reviewPagerKey = GlobalKey();
   final Map<String, Uint8List> _videoThumbnailCache = {};
   final Map<String, Uint8List> _imageThumbnailCache = {};
   final List<String> _imageThumbnailOrder = [];
@@ -609,6 +615,19 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     }
   }
 
+  /// Jumps the pager to the first item from [year] (year chips beside the
+  /// photo on wide screens).
+  void _jumpToYear(int year) {
+    final index = _reviewMedia.indexWhere((m) => m.year == year);
+    if (index == -1 || index == _currentIndex) return;
+    final distance = (index - _currentIndex).abs();
+    _reviewPageController.animateToPage(
+      index,
+      duration: Duration(milliseconds: (distance * 40).clamp(300, 1200)),
+      curve: Curves.easeInOut,
+    );
+  }
+
   void _decideCurrentItem(bool keep) {
     if (_currentIndex >= _reviewMedia.length) return;
     final item = _reviewMedia[_currentIndex];
@@ -761,6 +780,7 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
         children: [
           // Persistent header - always shown
           LogoWidget(
+            maxHeight: _isReviewMode && !_isComplete ? ReviewLayout.bannerMaxHeight(context) : null,
             selectedDateKey: _selectedDateKey,
             onTap: (_isReviewMode || _isComplete) ? () {
               try {
@@ -814,17 +834,28 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
                 ),
               )
             : isPreviewing && _currentYearIndex < _years.length
-                ? Center(
-                    key: ValueKey('preview'),
+                ? LeadingPaneCenter(
+                    key: const ValueKey('preview'),
                     child: Padding(
                       padding: const EdgeInsets.all(16.0),
-                      child: YearPreviewCard(
-                        key: ValueKey(_years[_currentYearIndex]),
-                        year: _years[_currentYearIndex],
-                        totalItemsForYear: _mediaByYear[_years[_currentYearIndex]]!.length,
-                        thumbnailData: _thumbnailCache[_years[_currentYearIndex]],
-                        isVideo: _mediaByYear[_years[_currentYearIndex]]!.first.isVideo,
-                        fadeAnimation: _fadeController!,
+                      // The card is a fixed height; scale it down where the
+                      // space is short (landscape, tabletop) and stop it
+                      // stretching across wide screens.
+                      child: LayoutBuilder(
+                        builder: (context, constraints) => FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: SizedBox(
+                            width: constraints.maxWidth.clamp(0.0, 460.0),
+                            child: YearPreviewCard(
+                              key: ValueKey(_years[_currentYearIndex]),
+                              year: _years[_currentYearIndex],
+                              totalItemsForYear: _mediaByYear[_years[_currentYearIndex]]!.length,
+                              thumbnailData: _thumbnailCache[_years[_currentYearIndex]],
+                              isVideo: _mediaByYear[_years[_currentYearIndex]]!.first.isVideo,
+                              fadeAnimation: _fadeController!,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   )
@@ -860,70 +891,74 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
     final totalToDelete = deleteByYear.values.fold(0, (a, b) => a + b);
     final sortedYears = deleteByYear.keys.toList()..sort((a, b) => b.compareTo(a));
 
-    return Column(
+    return ReviewLayout(
       key: const ValueKey('review'),
-      children: [
-        Padding(
+      topOffset: ReviewLayout.bannerHeight(context),
+      header: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                AppDateUtils.formatDateForDisplay(_selectedDateKey, year: currentMedia.year),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-              ),
               Row(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    '${_currentIndex + 1} of ${_reviewMedia.length}',
-                    style: const TextStyle(fontSize: 16),
+                    AppDateUtils.formatDateForDisplay(_selectedDateKey, year: currentMedia.year),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                   ),
-                  const SizedBox(width: 4),
-                  GestureDetector(
-                    onTap: () => _handleShare(currentMedia),
-                    child: Icon(
-                      Platform.isIOS ? Icons.ios_share : Icons.share,
-                      size: 20,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  if (showSkipButton) ...[
-                    const SizedBox(width: 4),
-                    TextButton(
-                      onPressed: _skipCurrentYear,
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.orange,
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${_currentIndex + 1} of ${_reviewMedia.length}',
+                        style: const TextStyle(fontSize: 16),
                       ),
-                      child: Text(
-                        'Skip $currentYear',
-                        style: const TextStyle(fontSize: 13),
+                      const SizedBox(width: 6),
+                      GestureDetector(
+                        onTap: () => _handleShare(currentMedia),
+                        child: Icon(
+                          Platform.isIOS ? Icons.ios_share : Icons.share,
+                          size: 20,
+                          color: Colors.black87,
+                        ),
                       ),
-                    ),
-                  ],
-                  const SizedBox(width: 4),
-                  TextButton(
-                    onPressed: _onReviewEnd,
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.blue,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: const Text(
-                      'Done',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
+                      const SizedBox(width: 4),
+                      TextButton(
+                        onPressed: _onReviewEnd,
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.blue,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text(
+                          'Done',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
+              if (showSkipButton)
+                TextButton(
+                  onPressed: _skipCurrentYear,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.orange,
+                    padding: const EdgeInsets.only(top: 2),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    'Skip $currentYear',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ),
             ],
           ),
         ),
-        Expanded(
+      pager: KeyedSubtree(
+          key: _reviewPagerKey,
           child: PageView.builder(
             controller: _reviewPageController,
             scrollDirection: Axis.vertical,
@@ -984,33 +1019,43 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
             },
           ),
         ),
-        SafeArea(
-          top: false,
-          child: Column(
+      details: ReviewSummary(
+        media: _reviewMedia,
+        decisions: _reviewDecisions,
+        currentYear: currentYear,
+        onYearTap: _jumpToYear,
+      ),
+      controls: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Padding(
                 padding: EdgeInsets.fromLTRB(40, 16, 40, Platform.isAndroid ? 8 : 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    ElevatedButton(
-                      onPressed: () => _handleButtonDecide(false),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                // Both buttons shrink together on narrow screens (iPhone SE, Duo's
+                // outer display) instead of overflowing.
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ElevatedButton(
+                        onPressed: () => _handleButtonDecide(false),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                        ),
+                        child: const Text('❌ Delete', style: TextStyle(fontSize: 18)),
                       ),
-                      child: const Text('❌ Delete', style: TextStyle(fontSize: 18)),
-                    ),
-                    ElevatedButton(
-                      onPressed: () => _handleButtonDecide(true),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                      const SizedBox(width: 16),
+                      ElevatedButton(
+                        onPressed: () => _handleButtonDecide(true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                        ),
+                        child: const Text('✅ Keep', style: TextStyle(fontSize: 18)),
                       ),
-                      child: const Text('✅ Keep', style: TextStyle(fontSize: 18)),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
               Padding(
@@ -1041,13 +1086,11 @@ class _CarouselScreenState extends State<CarouselScreen> with TickerProviderStat
               ),
             ],
           ),
-        ),
-      ],
     );
   }
-  
+
   Widget _buildCompletionContent() {
-    return Center(
+    return LeadingPaneCenter(
       key: const ValueKey('completion'),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
